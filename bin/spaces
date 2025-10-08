@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+
+// Import the built CLI
+import('../dist/index.js').catch((error) => {
+  console.error('Failed to load CLI:', error);
+  process.exit(1);
+});

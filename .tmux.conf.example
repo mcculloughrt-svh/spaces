@@ -1,0 +1,23 @@
+# Example .tmux.conf for workspace customization
+# Copy this file to your workspace root as .tmux.conf to use it
+
+# Example 1: Simple vertical split (editor + terminal)
+# split-window -v -p 30
+# select-pane -t 0
+
+# Example 2: Three-pane layout (editor | terminal/logs split vertically)
+# split-window -h -p 30
+# select-pane -t 1
+# split-window -v -p 50
+# select-pane -t 0
+
+# Example 3: Four-pane grid
+# split-window -h -p 50
+# select-pane -t 0
+# split-window -v -p 50
+# select-pane -t 2
+# split-window -v -p 50
+# select-pane -t 0
+
+# Default: Single pane (no custom layout)
+# Just leave this file empty or comment everything out
