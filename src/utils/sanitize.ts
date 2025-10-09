@@ -53,6 +53,7 @@ export function generateWorkspaceName(identifier: string, title: string): string
 /**
  * Validate a workspace name
  * - Must contain only alphanumeric characters, hyphens, and underscores
+ * - Must not contain spaces
  * - Must not be empty
  * - Must not start or end with a hyphen
  *
@@ -61,6 +62,11 @@ export function generateWorkspaceName(identifier: string, title: string): string
  */
 export function isValidWorkspaceName(name: string): boolean {
   if (!name || name.length === 0) {
+    return false;
+  }
+
+  // Check for spaces (explicitly rejected)
+  if (name.includes(' ')) {
     return false;
   }
 

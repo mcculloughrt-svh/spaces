@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import { existsSync } from 'fs';
 import { SpacesError } from '../types/errors.js';
 import { logger } from '../utils/logger.js';
+import { escapeShellArg } from '../utils/shell-escape.js';
 import type { WorktreeInfo } from '../types/workspace.js';
 
 const execAsync = promisify(exec);
@@ -40,7 +41,7 @@ export async function checkRemoteBranch(
 ): Promise<boolean> {
   try {
     await execAsync(
-      `git ls-remote --exit-code --heads origin "${branchName}"`,
+      `git ls-remote --exit-code --heads origin ${escapeShellArg(branchName)}`,
       { cwd: repoPath }
     );
     return true;
@@ -95,7 +96,7 @@ export async function checkLocalBranch(
 ): Promise<boolean> {
   try {
     await execAsync(
-      `git show-ref --verify --quiet "refs/heads/${branchName}"`,
+      `git show-ref --verify --quiet ${escapeShellArg(`refs/heads/${branchName}`)}`,
       { cwd: repoPath }
     );
     return true;
@@ -130,7 +131,7 @@ export async function createWorktree(
 
     // Pull latest base branch
     try {
-      await execAsync(`git pull --ff-only origin "${baseBranch}"`, {
+      await execAsync(`git pull --ff-only origin ${escapeShellArg(baseBranch)}`, {
         cwd: repoPath,
       });
     } catch (error) {
@@ -142,20 +143,20 @@ export async function createWorktree(
       // Branch exists on remote, create from remote branch
       logger.debug(`Creating worktree from remote branch: ${branchName}`);
       await execAsync(
-        `git worktree add "${workspacePath}" -b "${branchName}" "origin/${branchName}"`,
+        `git worktree add ${escapeShellArg(workspacePath)} -b ${escapeShellArg(branchName)} ${escapeShellArg(`origin/${branchName}`)}`,
         { cwd: repoPath }
       );
     } else if (await checkLocalBranch(repoPath, branchName)) {
       // Branch exists locally, attach worktree to it
       logger.debug(`Creating worktree from local branch: ${branchName}`);
-      await execAsync(`git worktree add "${workspacePath}" "${branchName}"`, {
+      await execAsync(`git worktree add ${escapeShellArg(workspacePath)} ${escapeShellArg(branchName)}`, {
         cwd: repoPath,
       });
     } else {
       // Branch doesn't exist, create new from base
       logger.debug(`Creating new branch from ${baseBranch}: ${branchName}`);
       await execAsync(
-        `git worktree add -b "${branchName}" "${workspacePath}" "origin/${baseBranch}"`,
+        `git worktree add -b ${escapeShellArg(branchName)} ${escapeShellArg(workspacePath)} ${escapeShellArg(`origin/${baseBranch}`)}`,
         { cwd: repoPath }
       );
     }
@@ -182,7 +183,7 @@ export async function removeWorktree(
 ): Promise<void> {
   try {
     const forceFlag = force ? '--force' : '';
-    await execAsync(`git worktree remove "${workspacePath}" ${forceFlag}`, {
+    await execAsync(`git worktree remove ${escapeShellArg(workspacePath)} ${forceFlag}`, {
       cwd: repoPath,
     });
   } catch (error) {
@@ -215,7 +216,7 @@ export async function getWorktreeInfo(workspacePath: string): Promise<WorktreeIn
     let behind = 0;
     try {
       const { stdout: revListOutput } = await execAsync(
-        `git rev-list --left-right --count HEAD...origin/${branch}`,
+        `git rev-list --left-right --count ${escapeShellArg(`HEAD...origin/${branch}`)}`,
         { cwd: workspacePath }
       );
       const [aheadStr, behindStr] = revListOutput.trim().split('\t');
@@ -274,7 +275,7 @@ export async function deleteLocalBranch(
 ): Promise<void> {
   try {
     const forceFlag = force ? '-D' : '-d';
-    await execAsync(`git branch ${forceFlag} "${branchName}"`, {
+    await execAsync(`git branch ${forceFlag} ${escapeShellArg(branchName)}`, {
       cwd: repoPath,
     });
   } catch (error) {

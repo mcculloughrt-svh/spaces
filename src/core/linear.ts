@@ -186,7 +186,7 @@ export async function fetchUnstartedIssues(
 					url: issue.url,
 					assignee: issue.assignee,
 					createdAt: issue.createdAt,
-					updatedAt: issue.createdAt,
+					updatedAt: issue.updatedAt,
 					attachments,
 				})
 			}

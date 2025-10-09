@@ -112,6 +112,7 @@ switchCommand
   .argument('[workspace-name]', 'Name of the workspace to switch to')
   .option('--no-tmux', 'Just cd to workspace without tmux')
   .option('--new-window', 'Create new window in existing session instead of attaching')
+  .option('-f, --force', 'Jump to first fuzzy match without confirmation')
   .action(async (workspaceName, options) => {
     await checkFirstTimeSetup();
     try {

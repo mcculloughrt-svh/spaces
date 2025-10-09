@@ -14,11 +14,16 @@ import {
 } from '../core/config.js';
 import { selectItem } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
-import { createOrAttachSession } from '../core/tmux.js';
+import { createOrAttachSession, sessionExists } from '../core/tmux.js';
 import { getWorktreeInfo } from '../core/git.js';
 import { SpacesError, NoProjectError } from '../types/errors.js';
 import { join } from 'path';
 import { runCommandsInTerminal } from '../utils/run-commands.js';
+import { fuzzyMatch } from '../utils/fuzzy-match.js';
+import type {
+  WorkspaceCandidate,
+  RankedWorkspace,
+} from '../types/workspace-fuzzy.js';
 
 /**
  * Switch to a different project
@@ -83,6 +88,7 @@ export async function switchWorkspace(
   options: {
     noTmux?: boolean;
     newWindow?: boolean;
+    force?: boolean;
   } = {}
 ): Promise<void> {
   // Get current project
@@ -120,15 +126,47 @@ export async function switchWorkspace(
   let workspaceName: string;
 
   if (workspaceNameArg) {
-    // Workspace name provided as argument
-    if (!workspaces.includes(workspaceNameArg)) {
-      throw new SpacesError(
-        `Workspace "${workspaceNameArg}" not found`,
-        'USER_ERROR',
-        1
+    // Try exact match first (backward compatible)
+    if (workspaces.includes(workspaceNameArg)) {
+      workspaceName = workspaceNameArg;
+    } else {
+      // No exact match - try fuzzy matching
+      logger.debug(`No exact match for "${workspaceNameArg}", trying fuzzy match...`);
+
+      const candidates = await gatherWorkspaceCandidates(
+        workspacesDir,
+        workspaces
       );
+
+      const matches = fuzzyMatch(workspaceNameArg, candidates);
+
+      if (matches.length === 0) {
+        throw new SpacesError(
+          `No workspaces match "${workspaceNameArg}"\n\nAvailable workspaces:\n${workspaces.map(w => '  - ' + w).join('\n')}`,
+          'USER_ERROR',
+          1
+        );
+      }
+
+      // Rank matches
+      const ranked = rankMatches(matches);
+
+      // If only one match or force flag, use directly
+      if (ranked.length === 1 || options.force) {
+        workspaceName = ranked[0].workspace.name;
+        logger.info(`Fuzzy matched "${workspaceNameArg}" → ${workspaceName}`);
+      } else {
+        // Multiple matches - show interactive selection
+        const selected = await selectFromRanked(ranked, workspaceNameArg);
+
+        if (!selected) {
+          logger.info('Cancelled');
+          return;
+        }
+
+        workspaceName = selected.name;
+      }
     }
-    workspaceName = workspaceNameArg;
   } else {
     // Get workspace info for display
     const workspaceOptions: string[] = [];
@@ -188,4 +226,149 @@ export async function switchWorkspace(
       false // never skip setup on switch
     );
   }
+}
+
+/**
+ * Gather workspace candidates with metadata for fuzzy matching
+ *
+ * @param workspacesDir Path to workspaces directory
+ * @param workspaceNames Array of workspace names
+ * @returns Array of workspace candidates with metadata
+ */
+async function gatherWorkspaceCandidates(
+  workspacesDir: string,
+  workspaceNames: string[]
+): Promise<WorkspaceCandidate[]> {
+  const candidates: WorkspaceCandidate[] = [];
+
+  for (const name of workspaceNames) {
+    const path = join(workspacesDir, name);
+    const info = await getWorktreeInfo(path);
+
+    if (info) {
+      // Check for active tmux session
+      const hasActiveTmuxSession = await sessionExists(name);
+
+      candidates.push({
+        name: info.name,
+        path: info.path,
+        branch: info.branch,
+        ahead: info.ahead,
+        behind: info.behind,
+        uncommittedChanges: info.uncommittedChanges,
+        lastCommit: info.lastCommit,
+        hasActiveTmuxSession,
+      });
+    }
+  }
+
+  return candidates;
+}
+
+/**
+ * Rank fuzzy matches with additional scoring
+ *
+ * Additional ranking factors:
+ * - Shorter workspace names get +5 bonus (easier to type)
+ * - Active tmux sessions get +10 bonus (likely working on it)
+ *
+ * @param matches Fuzzy match results
+ * @returns Ranked workspace results
+ */
+function rankMatches(
+  matches: Array<{ item: WorkspaceCandidate; score: number; matchedIndices: number[] }>
+): RankedWorkspace[] {
+  const ranked: RankedWorkspace[] = matches.map((match) => {
+    let finalScore = match.score;
+
+    // Bonus for shorter names (easier to remember/type)
+    if (match.item.name.length <= 15) {
+      finalScore += 5;
+    }
+
+    // Bonus for active tmux session (likely current work)
+    if (match.item.hasActiveTmuxSession) {
+      finalScore += 10;
+    }
+
+    return {
+      workspace: match.item,
+      matchScore: match.score,
+      finalScore,
+      matchedIndices: match.matchedIndices,
+    };
+  });
+
+  // Sort by final score
+  ranked.sort((a, b) => b.finalScore - a.finalScore);
+
+  return ranked;
+}
+
+/**
+ * Display ranked workspaces and prompt for selection
+ *
+ * @param ranked Ranked workspace results
+ * @param query Original query (for display)
+ * @returns Selected workspace or null if cancelled
+ */
+async function selectFromRanked(
+  ranked: RankedWorkspace[],
+  query: string
+): Promise<WorkspaceCandidate | null> {
+  // Format each workspace for display
+  const choices = ranked.map((r) => formatWorkspaceChoice(r));
+
+  const selected = await selectItem(
+    choices,
+    `Multiple matches for "${query}":`
+  );
+
+  if (!selected) {
+    return null;
+  }
+
+  // Parse workspace name from selection (first part before padding)
+  const workspaceName = selected.split(/\s+/)[0];
+  const workspace = ranked.find((r) => r.workspace.name === workspaceName);
+
+  return workspace ? workspace.workspace : null;
+}
+
+/**
+ * Format a ranked workspace for display in selection list
+ *
+ * Format: "name    [branch +A -B] status (tmux)"
+ * Example: "my-feature    [main +2 -0] clean (tmux)"
+ *
+ * @param ranked Ranked workspace
+ * @returns Formatted string for display
+ */
+function formatWorkspaceChoice(ranked: RankedWorkspace): string {
+  const ws = ranked.workspace;
+  const parts: string[] = [];
+
+  // Workspace name (padded to 30 chars for alignment)
+  parts.push(ws.name.padEnd(30));
+
+  // Branch info with ahead/behind
+  if (ws.ahead > 0 || ws.behind > 0) {
+    parts.push(`[${ws.branch} +${ws.ahead} -${ws.behind}]`);
+  } else {
+    parts.push(`[${ws.branch}]`);
+  }
+
+  // Uncommitted changes or clean status
+  if (ws.uncommittedChanges > 0) {
+    parts.push(`${ws.uncommittedChanges} uncommitted`);
+  } else {
+    parts.push('clean');
+  }
+
+  // Active tmux indicator
+  if (ws.hasActiveTmuxSession) {
+    parts.push('(tmux)');
+  }
+
+  return parts.join(' ');
 }

@@ -191,7 +191,7 @@ export async function addWorkspace(
     // Workspace name provided as argument
     if (!isValidWorkspaceName(workspaceNameArg)) {
       throw new SpacesError(
-        `Invalid workspace name: ${workspaceNameArg}\nWorkspace names must contain only alphanumeric characters, hyphens, and underscores.`,
+        `Invalid workspace name: ${workspaceNameArg}\nWorkspace names must contain only alphanumeric characters, hyphens, and underscores (no spaces).`,
         'USER_ERROR',
         1
       );
@@ -238,8 +238,8 @@ export async function addWorkspace(
         return;
       }
 
-      // Use branch name as workspace name (sanitize for workspace naming)
-      workspaceName = selectedBranch.replace(/\//g, '-');
+      // Use branch name as workspace name (sanitize for filesystem safety)
+      workspaceName = sanitizeForFileSystem(selectedBranch);
       branchName = selectedBranch;
       existsRemotely = true; // We know it exists remotely
     } else if (source === 'Create from Linear issue') {
@@ -294,7 +294,7 @@ export async function addWorkspace(
             return 'Workspace name is required';
           }
           if (!isValidWorkspaceName(input)) {
-            return 'Workspace name must contain only alphanumeric characters, hyphens, and underscores';
+            return 'Workspace name must contain only alphanumeric characters, hyphens, and underscores (no spaces)';
           }
           return true;
         },

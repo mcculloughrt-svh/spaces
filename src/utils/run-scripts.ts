@@ -10,6 +10,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { SpacesError } from '../types/errors.js';
 import { logger } from './logger.js';
+import { escapeShellArg } from './shell-escape.js';
 
 const execAsync = promisify(exec);
 
@@ -136,7 +137,7 @@ export async function runScriptsInTmux(
     logger.debug(`  Running in tmux: ${scriptName} ${workspaceName} ${repository}`);
 
     try {
-      await execAsync(`tmux send-keys -t "${sessionName}" "${command}" C-m`);
+      await execAsync(`tmux send-keys -t ${escapeShellArg(sessionName)} ${escapeShellArg(command)} C-m`);
       // Small delay to allow command to start
       await new Promise((resolve) => setTimeout(resolve, 100));
     } catch (error) {

@@ -364,7 +364,7 @@ export function createProject(
 		tmuxTemplate += `
 # LLM Assistant Split Pane
 # Split window vertically (50/50)
-split-window -h
+split-window -h -c "#{pane_current_path}"
 
 # Select left pane and run LLM assistant
 select-pane -t 0
@@ -376,11 +376,11 @@ select-pane -t 1
 	} else {
 		tmuxTemplate += `
 # Example: Split window horizontally (create right pane at 30% width)
-# split-window -h -p 30
+# split-window -h -p 30 -c "#{pane_current_path}"
 
 # Example: Split the left pane vertically
 # select-pane -t 0
-# split-window -v -p 50
+# split-window -v -p 50 -c "#{pane_current_path}"
 
 # Example: Create multiple windows
 # new-window -n "tests"
