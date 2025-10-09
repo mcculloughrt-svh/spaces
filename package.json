@@ -20,7 +20,7 @@
     "linear",
     "workspace"
   ],
-  "author": "",
+  "author": "Ryan McCullough",
   "license": "MIT",
   "dependencies": {
     "commander": "^12.0.0",
