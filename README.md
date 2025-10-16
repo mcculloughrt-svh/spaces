@@ -6,10 +6,10 @@ A powerful CLI tool for managing GitHub repository workspaces using git worktree
 
 - 🚀 **Git Worktrees**: Work on multiple branches simultaneously without stashing
 - 🖥️ **Tmux Integration**: Automatic session management for each workspace
-- 📋 **Linear Integration**: Create workspaces directly from Linear issues
-- 🔄 **Smart Branch Management**: Automatic detection of remote branches
+- 📋 **Linear Integration**: Create workspaces directly from Linear issues with automatic markdown documentation
+- 🔄 **Smart Branch Management**: Automatic detection of remote branches with fuzzy matching
 - 📊 **Workspace Status**: Track uncommitted changes, stale workspaces, and more
-- ⚙️ **Custom Scripts**: Convention-based scripts for setup, select, and pre-setup phases
+- ⚙️ **Custom Scripts**: Convention-based scripts for setup, select, pre-setup, and removal phases
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ The following tools must be installed and available in your PATH:
 - [Git](https://git-scm.com/) - for worktree management
 - [tmux](https://github.com/tmux/tmux/wiki) - for session management
 - [jq](https://stedolan.github.io/jq/) - for JSON processing
-- [Node.js](https://nodejs.org/) (v18+) - to run the CLI
+- [Bun](https://bun.sh) - to run the CLI (or node.js... if you don't mind startup lag)
 
 **GitHub Authentication**: You must authenticate the GitHub CLI before using Spaces:
 
@@ -30,18 +30,17 @@ gh auth login
 ## Installation
 
 ```bash
-# Clone this repository to ~/spaces/app
-git clone <repo-url> ~/spaces/app
+# Clone this repository
+git clone https://github.com/mcculloughrt-svh/spaces.git
 
 # Install dependencies
-cd ~/spaces/app
-npm install
+bun install
 
 # Build the CLI
-npm run build
+bun run build
 
 # Link the CLI globally
-npm link
+bun link
 
 # Verify installation
 spaces --version
@@ -56,7 +55,7 @@ spaces --version
 spaces add project
 ```
 
-Select a repository using fzf, and Spaces will:
+Select a github repository, and Spaces will:
 
 - Clone the repository to `~/spaces/<project-name>/base`
 - Detect the default branch
@@ -83,24 +82,21 @@ This will:
 ### 3. Switch Between Workspaces
 
 ```bash
-# List and select a workspace interactively
+# List and select a workspace interactively with switch (or sw)
 spaces switch
 
-# Switch to a specific workspace
+# Switch to a specific workspace, workspaces are fuzzy matched
 spaces switch my-feature
 ```
 
 ### 4. List Workspaces
 
 ```bash
-# List workspaces in the current project
+# List workspaces in the current project with list (or ls)
 spaces list
 
-# List all projects
+# List projects
 spaces list projects
-
-# List with verbose output
-spaces list --verbose
 ```
 
 ## Commands
@@ -127,7 +123,8 @@ spaces add project --linear-key lin_api_...
 
 ### `spaces add [workspace-name]`
 
-Create a new workspace in the current project.
+Create a new workspace in the current project. Omit workspace-name to interactively choose
+from github branches and linear issues to create from.
 
 ```bash
 spaces add [workspace-name] [options]
@@ -142,7 +139,7 @@ Options:
 **Example:**
 
 ```bash
-# Create workspace from Linear issue
+# Create workspace from Linear issue (interactive selection)
 spaces add
 
 # Create workspace with custom name
@@ -151,6 +148,13 @@ spaces add fix-bug-123
 # Create workspace from specific branch
 spaces add hotfix --from production
 ```
+
+**Linear Integration:**
+When creating a workspace from a Linear issue, Spaces will:
+
+- Generate a workspace name from the issue identifier and title
+- Save the full issue details (description, metadata, attachments) to `.prompt/issue.md` in the workspace
+- This markdown file can be used with LLM assistants for context about the task
 
 ### `spaces switch project [project-name]`
 
@@ -172,15 +176,24 @@ spaces switch project my-app
 
 ### `spaces switch [workspace-name]`
 
-Switch to a workspace in the current project.
+Switch to a workspace in the current project. Workspace names are **fuzzy-matched**, so you don't need to type the exact name. Or leave workspace-name blank for interactive selection.
 
 ```bash
 spaces switch [workspace-name] [options]
+# Alias
+spaces sw [workspace-name]
 
 Options:
   --no-tmux            Just cd to workspace without tmux
   --new-window         Create new window in existing session instead of attaching
+  -f, --force          Jump to first fuzzy match without confirmation
 ```
+
+**Fuzzy Matching:**
+
+- Workspace names are matched approximately, so `feat` can match `feature-branch`
+- Shorter workspace names and active tmux sessions score higher
+- If multiple matches are found, you'll be prompted to choose (unless using `-f`)
 
 **Example:**
 
@@ -188,8 +201,14 @@ Options:
 # Interactive selection
 spaces switch
 
-# Direct switch
+# Direct switch (exact match)
 spaces switch my-feature
+
+# Fuzzy match - will find 'my-feature-branch'
+spaces switch my-feat
+
+# Force first fuzzy match without confirmation
+spaces switch feat -f
 ```
 
 ### `spaces list [subcommand]`
@@ -198,6 +217,8 @@ List projects or workspaces.
 
 ```bash
 spaces list [subcommand] [options]
+# Alias
+spaces ls [subcommand] [options]
 
 Subcommands:
   projects             List all projects
@@ -213,9 +234,13 @@ Options:
 ```bash
 # List workspaces
 spaces list
+# Or using alias
+spaces ls
 
 # List projects
 spaces list projects
+# Or using alias
+spaces ls projects
 
 # Verbose output
 spaces list --verbose
@@ -227,6 +252,8 @@ Remove a workspace.
 
 ```bash
 spaces remove workspace [workspace-name] [options]
+# Alias
+spaces rm workspace [workspace-name] [options]
 
 Options:
   --force              Skip confirmation prompts
@@ -238,9 +265,13 @@ Options:
 ```bash
 # Interactive removal
 spaces remove workspace
+# Or using alias
+spaces rm workspace
 
 # Force remove without confirmation
 spaces remove workspace my-feature --force
+# Or using alias
+spaces rm workspace my-feature --force
 ```
 
 ### `spaces remove project [project-name]`
@@ -249,6 +280,8 @@ Remove a project.
 
 ```bash
 spaces remove project [project-name] [options]
+# Alias
+spaces rm project [project-name] [options]
 
 Options:
   --force              Skip confirmation prompts
@@ -259,9 +292,38 @@ Options:
 ```bash
 # Interactive removal (requires typing project name to confirm)
 spaces remove project
+# Or using alias
+spaces rm project
 
 # Direct removal
 spaces remove project my-app
+# Or using alias
+spaces rm project my-app
+```
+
+### `spaces directory`
+
+Print the current project directory path. Useful for shell integration.
+
+```bash
+spaces directory
+# Alias
+spaces dir
+```
+
+**Example:**
+
+```bash
+# Print current project directory
+spaces directory
+# Output: /Users/username/spaces/my-app
+
+# Shell integration - cd to project directory
+cd $(spaces dir)
+
+# Or use in scripts
+PROJECT_DIR=$(spaces directory)
+echo "Working in: $PROJECT_DIR"
 ```
 
 ## Configuration
@@ -295,6 +357,7 @@ Located at `~/spaces/<project-name>/.config.json`:
 	"baseBranch": "main",
 	"linearApiKey": "lin_api_...",
 	"linearTeamKey": "ENG",
+	"llmAssistant": "claude",
 	"createdAt": "2025-10-06T12:00:00Z",
 	"lastAccessed": "2025-10-06T12:00:00Z"
 }
@@ -302,6 +365,7 @@ Located at `~/spaces/<project-name>/.config.json`:
 
 - `linearApiKey`: Optional Linear API key for issue integration
 - `linearTeamKey`: Optional Linear team filter
+- `llmAssistant`: Optional command to run in a split tmux pane (e.g., `"claude"`, `"aider"`, `"cursor"`)
 
 ### Custom Scripts
 
@@ -315,9 +379,12 @@ Spaces uses **convention over configuration** for custom scripts. Instead of lis
 ├── setup/                 # Run on workspace creation after pre scripts have finished (will execute in new tmux session if tmux is present)
 │   ├── 01-install.sh
 │   └── 02-build.sh
-└── select/                # Run every time the workspace is opened (will execute in a new tmux session if tmux is present)
-    ├── 01-fetch.sh
-    └── 02-status.sh
+├── select/                # Run every time the workspace is opened (will execute in a new tmux session if tmux is present)
+│   ├── 01-fetch.sh
+│   └── 02-status.sh
+└── remove/                # Run before workspace deletion (in terminal)
+    ├── 01-cleanup.sh
+    └── 02-notify.sh
 ```
 
 #### Script Execution Rules
@@ -373,6 +440,15 @@ After running, Spaces creates a `.spaces-setup` marker file. This prevents pre a
 - Checking workspace state (`git status`)
 - Environment checks
 - Quick status updates
+
+**4. Remove Scripts** (`remove/`): Run **in the terminal** before a workspace is deleted. Perfect for:
+
+- Cleaning up temporary files or caches
+- Notifying external services
+- Backing up important data
+- Logging or auditing workspace removal
+
+These run before the worktree is removed, so you can still access workspace files.
 
 **Example workflow:**
 
@@ -498,7 +574,8 @@ npm run lint
 │   │   ├── add.ts
 │   │   ├── switch.ts
 │   │   ├── list.ts
-│   │   └── remove.ts
+│   │   ├── remove.ts
+│   │   └── directory.ts
 │   ├── core/                    # Core functionality
 │   │   ├── config.ts
 │   │   ├── git.ts
@@ -507,29 +584,38 @@ npm run lint
 │   │   └── linear.ts
 │   ├── utils/                   # Utilities
 │   │   ├── deps.ts
-│   │   ├── fzf.ts
+│   │   ├── fuzzy-match.ts
 │   │   ├── logger.ts
+│   │   ├── markdown.ts
+│   │   ├── prompts.ts
+│   │   ├── run-commands.ts
 │   │   ├── run-scripts.ts
 │   │   ├── sanitize.ts
+│   │   ├── shell-escape.ts
 │   │   └── workspace-state.ts
 │   └── types/                   # Type definitions
 │       ├── config.ts
 │       ├── errors.ts
-│       └── workspace.ts
+│       ├── workspace.ts
+│       └── workspace-fuzzy.ts
 └── bin/
     └── spaces                   # Executable
 
 ~/spaces/<project-name>/
 ├── .config.json                 # Project configuration
+├── tmux.template.conf           # Template tmux config (copied to workspaces)
 ├── base/                        # Base repository clone
 ├── workspaces/                  # Git worktrees (one per feature/task)
 │   └── my-feature/
 │       ├── .spaces-setup        # Marker file (setup completed)
-│       └── .tmux.conf           # Optional custom tmux layout
+│       ├── .tmux.conf           # Workspace tmux config (copied from template)
+│       └── .prompt/             # Linear integration (optional)
+│           └── issue.md         # Linear issue details
 └── scripts/                     # Custom scripts
     ├── pre/                     # Run before tmux (terminal)
     ├── setup/                   # Run once in tmux (first time)
-    └── select/                  # Run in tmux (every session)
+    ├── select/                  # Run in tmux (every session)
+    └── remove/                  # Run before workspace deletion (terminal)
 ```
 
 ## Troubleshooting

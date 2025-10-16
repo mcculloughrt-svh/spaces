@@ -21,7 +21,7 @@ import {
 	deleteLocalBranch,
 	getWorktreeInfo,
 } from '../core/git.js'
-import { killSession, sessionExists } from '../core/tmux.js'
+import { killSession, sessionExists, getCurrentSessionName } from '../core/tmux.js'
 import { logger } from '../utils/logger.js'
 import { selectItem, promptConfirm, promptInput } from '../utils/prompts.js'
 import { SpacesError, NoProjectError } from '../types/errors.js'
@@ -120,6 +120,17 @@ export async function removeWorkspace(
 
 	// Kill tmux session if it exists
 	if (await sessionExists(workspaceName)) {
+		// Check if we're currently in the session we're trying to kill
+		const currentSession = await getCurrentSessionName()
+		if (currentSession === workspaceName) {
+			logger.error(
+				`Cannot remove workspace while inside its tmux session "${workspaceName}"`
+			)
+			logger.info('Please detach from this tmux session and run the command again')
+			logger.info('  Detach: Press Ctrl+b, then d')
+			process.exit(1)
+		}
+
 		logger.info('Killing tmux session...')
 		await killSession(workspaceName)
 	}

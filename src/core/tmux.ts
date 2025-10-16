@@ -43,6 +43,24 @@ export function isInsideTmux(): boolean {
 }
 
 /**
+ * Get the name of the current tmux session
+ * Returns null if not inside tmux
+ */
+export async function getCurrentSessionName(): Promise<string | null> {
+	if (!isInsideTmux()) {
+		return null
+	}
+
+	try {
+		const { stdout } = await execAsync('tmux display-message -p "#S"')
+		return stdout.trim()
+	} catch (error) {
+		logger.debug(`Could not get current session name: ${error}`)
+		return null
+	}
+}
+
+/**
  * Create a new tmux session
  */
 export async function createSession(
