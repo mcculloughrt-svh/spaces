@@ -12,5 +12,5 @@ export async function getProjectDirectory(options: {
 	}
 
 	const projectDirectory = getProjectDir(currentProject)
-	logger.info(projectDirectory)
+	console.log(projectDirectory)
 }
