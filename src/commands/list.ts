@@ -149,27 +149,26 @@ export async function listWorkspaces(
 
 	for (const workspace of workspaces) {
 		const parts: string[] = []
-
-		// Workspace name
-		parts.push(`  ${workspace.name.padEnd(30)}`)
+		parts.push(addSpace(2)) // indent
+		parts.push(truncateName(workspace.name, 40).padEnd(45)) // workspace name
 
 		// Branch and ahead/behind
 		if (workspace.ahead > 0 || workspace.behind > 0) {
 			parts.push(`+${workspace.ahead} -${workspace.behind}`.padEnd(10))
 		} else {
-			parts.push(`+0 -0`.padEnd(10))
+			parts.push('+0 -0'.padEnd(10))
 		}
 
 		// Uncommitted changes
 		if (workspace.uncommittedChanges > 0) {
-			parts.push(`${workspace.uncommittedChanges} uncommitted`.padEnd(15))
+			parts.push(`${workspace.uncommittedChanges} uncommitted`.padEnd(20))
 		} else {
-			parts.push('clean'.padEnd(15))
+			parts.push('clean'.padEnd(20))
 		}
 
 		// Active tmux session
 		if (workspace.hasActiveTmuxSession) {
-			parts.push('(active tmux)')
+			parts.push('(active tmux)'.padEnd(10))
 		}
 
 		// Stale workspace warning
@@ -186,4 +185,24 @@ export async function listWorkspaces(
 			logger.dim(`    Date: ${workspace.lastCommitDate.toLocaleDateString()}\n`)
 		}
 	}
+}
+
+function truncateName(
+	name: string,
+	maxLength: number,
+	includeEllipsis = true
+): string {
+	if (name.length <= maxLength) {
+		return name
+	}
+
+	if (includeEllipsis) {
+		return name.substring(0, maxLength - 3) + '...'
+	}
+
+	return name.substring(0, maxLength)
+}
+
+function addSpace(size: number): string {
+	return ' '.repeat(size)
 }
