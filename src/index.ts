@@ -24,7 +24,7 @@ const program = new Command()
 program
 	.name('spaces')
 	.description('CLI tool for managing GitHub repository workspaces')
-	.version('1.0.0')
+	.version('1.1.0')
 
 // First-time setup check
 async function checkFirstTimeSetup(): Promise<void> {
@@ -82,7 +82,10 @@ addCommand
 		'Specify different branch name from workspace name'
 	)
 	.option('--from <branch>', 'Create from specific branch instead of base')
-	.option('--stacked', 'Create workspace stacked on current or selected workspace branch')
+	.option(
+		'--stacked',
+		'Create workspace stacked on current or selected workspace branch'
+	)
 	.option('--no-tmux', "Don't create/attach tmux session")
 	.option('--no-setup', 'Skip setup commands')
 	.action(async (workspaceName, options) => {
@@ -270,7 +273,9 @@ program
 
 program
 	.command('pr')
-	.description('Create pull request with automatic base branch detection for stacked PRs')
+	.description(
+		'Create pull request with automatic base branch detection for stacked PRs'
+	)
 	.allowUnknownOption()
 	.action(async (options, command) => {
 		await checkFirstTimeSetup()
