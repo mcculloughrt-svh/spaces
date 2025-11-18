@@ -9,6 +9,7 @@ A powerful CLI tool for managing GitHub repository workspaces using git worktree
 - 📋 **Linear Integration**: Create workspaces directly from Linear issues with automatic markdown documentation
 - 🔄 **Smart Branch Management**: Automatic detection of remote branches with fuzzy matching
 - 📊 **Workspace Status**: Track uncommitted changes, stale workspaces, and more
+- 📚 **Stacked PRs**: Create dependent pull requests with automatic base branch detection, tree visualization, and rebase workflows
 - ⚙️ **Custom Scripts**: Convention-based scripts for setup, select, pre-setup, and removal phases
 
 ## Prerequisites
@@ -132,6 +133,7 @@ spaces add [workspace-name] [options]
 Options:
   --branch <name>      Specify different branch name from workspace name
   --from <branch>      Create from specific branch instead of base
+  --stacked            Create workspace stacked on current or selected workspace branch
   --no-tmux            Don't create/attach tmux session
   --no-setup           Skip setup commands
 ```
@@ -147,7 +149,26 @@ spaces add fix-bug-123
 
 # Create workspace from specific branch
 spaces add hotfix --from production
+
+# Create stacked workspace (while in another workspace)
+spaces add feature-b --stacked
+
+# Create stacked workspace (will prompt for parent selection)
+cd ~/spaces/my-app  # Not in a workspace
+spaces add feature-c --stacked
 ```
+
+**Stacked Workspaces:**
+
+The `--stacked` flag creates a workspace based on another workspace's branch instead of the main branch. This is useful for:
+- Building features that depend on unreviewed code
+- Creating a series of smaller, focused PRs
+- Testing changes before the base PR is merged
+
+When using `--stacked`:
+- If you're currently in a workspace, it uses that workspace's branch as the base
+- If you're not in a workspace, it prompts you to select a parent workspace
+- The stack relationship is tracked automatically for later commands
 
 **Linear Integration:**
 When creating a workspace from a Linear issue, Spaces will:
@@ -227,6 +248,7 @@ Subcommands:
 Options:
   --json               Output in JSON format
   --verbose            Show additional details
+  --tree               Show workspace stack tree visualization
 ```
 
 **Example:**
@@ -244,11 +266,131 @@ spaces ls projects
 
 # Verbose output
 spaces list --verbose
+
+# Tree view (shows stack relationships)
+spaces list --tree
+```
+
+**Workspace List Output:**
+
+The default list view shows workspace status including stack information:
+
+```
+Workspaces (my-app):
+  feature-a         +2 -0    clean            (active tmux)
+  feature-b         +1 -0    clean            [based on: feature-a]
+  feature-c         +0 -0    2 uncommitted    [based on: feature-b]  ⚠️ Behind base by 3 commits
+```
+
+**Tree View:**
+
+The `--tree` flag displays workspaces in a hierarchical tree structure:
+
+```
+Workspaces (my-app) - Tree View:
+├── feature-a (feature-a-branch) [+2 -0, clean, (active)]
+│   └── feature-b (feature-b-branch) [+1 -0, clean]
+│       └── feature-c (feature-c-branch) [+0 -0, 2 uncommitted]
+└── hotfix (hotfix-branch) [+0 -0, clean]
+```
+
+This makes it easy to visualize dependencies between stacked workspaces.
+
+### `spaces rebase-stack`
+
+Rebase the current workspace onto its parent workspace's latest commits. This command must be run from within a stacked workspace directory.
+
+```bash
+spaces rebase-stack [options]
+
+Options:
+  --auto               Skip confirmation prompt
+```
+
+**Example:**
+
+```bash
+# From within a stacked workspace
+cd ~/spaces/my-app/workspaces/feature-b
+spaces rebase-stack
+
+# Skip confirmation
+spaces rebase-stack --auto
+```
+
+**How it works:**
+
+1. Verifies you're in a stacked workspace (has a parent)
+2. Checks for uncommitted changes (must be clean)
+3. Fetches latest commits from the parent workspace
+4. Rebases current branch onto parent's branch
+5. Handles conflicts if they occur
+
+**Conflict Resolution:**
+
+If conflicts occur during rebase, Spaces will pause and show:
+
+```
+Rebase failed with conflicts.
+
+Resolve conflicts, then run:
+  git rebase --continue
+
+Or abort the rebase:
+  git rebase --abort
+```
+
+Resolve conflicts manually, then continue or abort the rebase using the standard git commands.
+
+### `spaces pr`
+
+Create a pull request with automatic base branch detection for stacked PRs. This is a wrapper around `gh pr create` that automatically sets the correct base branch for stacked workspaces.
+
+```bash
+spaces pr [gh pr create options]
+```
+
+All options and flags are passed through to `gh pr create`, so you can use any `gh` PR creation flags.
+
+**Example:**
+
+```bash
+# Create PR from a regular workspace (targets main branch)
+spaces pr --title "Add new feature" --body "Description here"
+
+# Create PR from a stacked workspace (automatically targets parent branch)
+cd ~/spaces/my-app/workspaces/feature-b  # This is stacked on feature-a
+spaces pr --title "Part 2: Add tests" --body "Builds on feature-a"
+# Automatically creates PR with base branch = feature-a
+
+# Use any gh pr create flags
+spaces pr --draft --reviewer octocat --label enhancement
+```
+
+**How it works:**
+
+For stacked workspaces, `spaces pr`:
+1. Detects the parent workspace from stack metadata
+2. Automatically sets `--base` to the parent's branch
+3. Shows helpful tips about the stack structure
+4. Passes all other arguments to `gh pr create`
+
+For regular (non-stacked) workspaces, it behaves like `gh pr create` with the base branch set to your project's main branch.
+
+**Stacked PR Tips:**
+
+When you create a stacked PR, Spaces displays helpful reminders:
+
+```
+📚 Stacked PR Tips:
+  • This PR targets "feature-a-branch" (from workspace: feature-a)
+  • Merge the parent PR first, then this one
+  • Keep in sync: spaces rebase-stack
 ```
 
 ### `spaces remove workspace [workspace-name]`
 
-Remove a workspace.
+Remove a workspace. If the workspace has dependent workspaces (children in a stack), you'll be prompted with options for handling them.
 
 ```bash
 spaces remove workspace [workspace-name] [options]
@@ -273,6 +415,29 @@ spaces remove workspace my-feature --force
 # Or using alias
 spaces rm workspace my-feature --force
 ```
+
+**Dependent Workspace Handling:**
+
+When removing a workspace that has dependent workspaces (children in a stack), Spaces will detect this and present options:
+
+```
+⚠️ Warning: This workspace has 2 dependent workspace(s):
+  - feature-b
+  - feature-c
+
+Options:
+  1. Cancel removal
+  2. Remove and rebase children onto main
+  3. Remove anyway (children will be orphaned)
+
+What would you like to do?
+```
+
+- **Cancel**: Abort the removal operation
+- **Rebase children**: Automatically rebases each dependent workspace onto the grandparent (or main if no grandparent exists), maintaining the stack
+- **Remove anyway**: Removes the workspace and orphans the children (they become regular workspaces based on main)
+
+This ensures you don't accidentally break your stack structure when removing workspaces.
 
 ### `spaces remove project [project-name]`
 
@@ -358,6 +523,16 @@ Located at `~/spaces/<project-name>/.config.json`:
 	"linearApiKey": "lin_api_...",
 	"linearTeamKey": "ENG",
 	"llmAssistant": "claude",
+	"stacks": {
+		"feature-b": {
+			"basedOn": "feature-a",
+			"baseBranch": "feature-a-branch"
+		},
+		"feature-c": {
+			"basedOn": "feature-b",
+			"baseBranch": "feature-b-branch"
+		}
+	},
 	"createdAt": "2025-10-06T12:00:00Z",
 	"lastAccessed": "2025-10-06T12:00:00Z"
 }
@@ -366,6 +541,7 @@ Located at `~/spaces/<project-name>/.config.json`:
 - `linearApiKey`: Optional Linear API key for issue integration
 - `linearTeamKey`: Optional Linear team filter
 - `llmAssistant`: Optional command to run in a split tmux pane (e.g., `"claude"`, `"aider"`, `"cursor"`)
+- `stacks`: Tracks parent-child relationships between stacked workspaces (automatically managed)
 
 ### Custom Scripts
 
@@ -522,6 +698,125 @@ spaces add feature-b
 spaces switch feature-a
 ```
 
+### Stacked PRs Workflow
+
+Stacked PRs allow you to create multiple dependent pull requests that build on each other. This is especially useful for:
+- Breaking large features into smaller, reviewable chunks
+- Building features that depend on unmerged code
+- Iterating quickly while previous PRs are in review
+
+**Example: Building a complete authentication system in stacked PRs**
+
+```bash
+# 1. Create base workspace for auth infrastructure
+spaces add auth-core
+# Implement: database models, JWT helpers, password hashing
+# Commit your changes
+
+# 2. Create stacked workspace for API endpoints (while in auth-core)
+cd ~/spaces/my-app/workspaces/auth-core
+spaces add auth-api --stacked
+# Implement: login, register, logout endpoints
+# These endpoints use the code from auth-core
+# Commit your changes
+
+# 3. Create stacked workspace for UI components (based on auth-api)
+cd ~/spaces/my-app/workspaces/auth-api
+spaces add auth-ui --stacked
+# Implement: login form, registration page
+# These use the API endpoints from auth-api
+# Commit your changes
+
+# 4. View your stack
+spaces list --tree
+# Output:
+# └── auth-core (auth-core-branch) [+5 -0, clean]
+#     └── auth-api (auth-api-branch) [+3 -0, clean]
+#         └── auth-ui (auth-ui-branch) [+4 -0, 2 uncommitted]
+```
+
+**Creating PRs for the stack:**
+
+```bash
+# Create PR for auth-core (targets main)
+cd ~/spaces/my-app/workspaces/auth-core
+spaces pr --title "Auth: Core infrastructure" --draft
+
+# Create PR for auth-api (automatically targets auth-core-branch)
+cd ~/spaces/my-app/workspaces/auth-api
+spaces pr --title "Auth: API endpoints" --draft
+# Output: 📚 Stacked PR Tips:
+#   • This PR targets "auth-core-branch" (from workspace: auth-core)
+#   • Merge the parent PR first, then this one
+#   • Keep in sync: spaces rebase-stack
+
+# Create PR for auth-ui (automatically targets auth-api-branch)
+cd ~/spaces/my-app/workspaces/auth-ui
+spaces pr --title "Auth: UI components" --draft
+```
+
+**Result:** Three PRs that can be reviewed independently:
+1. `auth-core` → `main` (5 commits)
+2. `auth-api` → `auth-core` (3 commits)
+3. `auth-ui` → `auth-api` (4 commits)
+
+**Updating stacked PRs when parent changes:**
+
+```bash
+# Reviewer requests changes to auth-core
+cd ~/spaces/my-app/workspaces/auth-core
+# Make the changes and commit
+git add .
+git commit -m "Address review comments"
+git push
+
+# Now auth-api and auth-ui are out of sync
+spaces list
+# Output:
+#   auth-core   +6 -0    clean
+#   auth-api    +3 -0    clean            [based on: auth-core]  ⚠️ Behind base by 1 commits
+#   auth-ui     +4 -0    clean            [based on: auth-api]
+
+# Rebase auth-api onto updated auth-core
+cd ~/spaces/my-app/workspaces/auth-api
+spaces rebase-stack
+# Rebases auth-api onto auth-core's latest commit
+
+# Rebase auth-ui onto updated auth-api
+cd ~/spaces/my-app/workspaces/auth-ui
+spaces rebase-stack
+# Rebases auth-ui onto auth-api's latest commit
+
+# Force push the rebased branches
+git push --force-with-lease
+```
+
+**Merging the stack:**
+
+Once the first PR (`auth-core → main`) is approved and merged:
+
+```bash
+# Update auth-api's base branch to main on GitHub
+gh pr edit --base main  # In auth-api workspace
+
+# Clean up: remove auth-core workspace
+spaces remove auth-core
+# Output: ⚠️ Warning: This workspace has 1 dependent workspace(s):
+#   - auth-api
+# Choose: "Rebase children onto main"
+
+# This automatically rebases auth-api onto main
+# Repeat the process for auth-api → auth-ui
+```
+
+**Tips for Managing Stacks:**
+
+1. **Keep stacks shallow**: 2-3 levels deep is ideal. Deeper stacks become harder to manage
+2. **Rebase frequently**: Run `spaces rebase-stack` after each parent update to avoid large conflicts
+3. **Use tree view**: `spaces list --tree` helps visualize complex dependencies
+4. **Create PRs early**: Draft PRs provide context and allow parallel review
+5. **Consider the merge order**: Always merge from bottom to top (base first, then children)
+
 ### Stale Workspace Detection
 
 Workspaces that haven't had commits in more than `staleDays` (default: 30) will be marked as stale:
@@ -571,11 +866,13 @@ npm run lint
 ├── src/
 │   ├── index.ts                 # CLI entry point
 │   ├── commands/                # Command implementations
-│   │   ├── add.ts
+│   │   ├── add.ts               # Add projects and workspaces (includes --stacked)
 │   │   ├── switch.ts
-│   │   ├── list.ts
-│   │   ├── remove.ts
-│   │   └── directory.ts
+│   │   ├── list.ts              # List with tree visualization support
+│   │   ├── remove.ts            # Remove with dependent checking
+│   │   ├── directory.ts
+│   │   ├── rebase-stack.ts      # Rebase stacked workspaces
+│   │   └── pr.ts                # PR creation with auto base detection
 │   ├── core/                    # Core functionality
 │   │   ├── config.ts
 │   │   ├── git.ts
@@ -592,9 +889,11 @@ npm run lint
 │   │   ├── run-scripts.ts
 │   │   ├── sanitize.ts
 │   │   ├── shell-escape.ts
-│   │   └── workspace-state.ts
+│   │   ├── workspace-state.ts
+│   │   ├── stack.ts             # Stack relationship management
+│   │   └── workspace-detection.ts # Current workspace detection
 │   └── types/                   # Type definitions
-│       ├── config.ts
+│       ├── config.ts            # Includes StackMetadata type
 │       ├── errors.ts
 │       ├── workspace.ts
 │       └── workspace-fuzzy.ts
@@ -602,7 +901,7 @@ npm run lint
     └── spaces                   # Executable
 
 ~/spaces/<project-name>/
-├── .config.json                 # Project configuration
+├── .config.json                 # Project configuration (includes stacks field)
 ├── tmux.template.conf           # Template tmux config (copied to workspaces)
 ├── base/                        # Base repository clone
 ├── workspaces/                  # Git worktrees (one per feature/task)

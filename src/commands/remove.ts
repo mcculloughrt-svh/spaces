@@ -5,6 +5,7 @@
 
 import { existsSync, rmSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { execSync, spawnSync } from 'child_process'
 import {
 	getCurrentProject,
 	readProjectConfig,
@@ -26,6 +27,12 @@ import { logger } from '../utils/logger.js'
 import { selectItem, promptConfirm, promptInput } from '../utils/prompts.js'
 import { SpacesError, NoProjectError } from '../types/errors.js'
 import { runScriptsInTerminal } from '../utils/run-scripts.js'
+import {
+	getStackChildren,
+	getStackParent,
+	removeStackMetadata,
+	setStackMetadata,
+} from '../utils/stack.js'
 
 /**
  * Remove a workspace
@@ -118,6 +125,123 @@ export async function removeWorkspace(
 		}
 	}
 
+	// Check for dependent workspaces (children in stack)
+	const children = getStackChildren(currentProject, workspaceName)
+
+	if (children.length > 0) {
+		logger.warning(`\n⚠️  Warning: This workspace has ${children.length} dependent workspace(s):`)
+		for (const child of children) {
+			logger.log(`  - ${child}`)
+		}
+
+		const projectConfig = readProjectConfig(currentProject)
+		const parent = getStackParent(currentProject, workspaceName)
+		const newBase = parent ? parent.branch : projectConfig.baseBranch
+		const newBaseName = parent ? `${parent.workspaceName} (${parent.branch})` : projectConfig.baseBranch
+
+		logger.log('\nOptions:')
+		logger.log(`  1. Cancel removal`)
+		logger.log(`  2. Remove and rebase children onto ${newBaseName}`)
+		logger.log(`  3. Remove anyway (children will be orphaned)`)
+
+		const choice = await selectItem(
+			['Cancel', `Rebase children onto ${newBaseName}`, 'Remove anyway (orphan children)'],
+			'What would you like to do?'
+		)
+
+		if (!choice || choice.startsWith('Cancel')) {
+			logger.info('Cancelled')
+			return
+		}
+
+		if (choice.startsWith('Rebase')) {
+			// Rebase each child onto the new base
+			logger.info(`\nRebasing ${children.length} dependent workspace(s)...`)
+
+			for (const child of children) {
+				const childPath = join(workspacesDir, child)
+
+				try {
+					logger.info(`Rebasing ${child}...`)
+
+					// Fetch the new base
+					let fetchResult
+					if (parent) {
+						const parentPath = join(workspacesDir, parent.workspaceName)
+						fetchResult = spawnSync('git', [
+							'fetch',
+							parentPath,
+							`${newBase}:refs/remotes/newbase/${newBase}`
+						], {
+							cwd: childPath,
+							stdio: 'pipe',
+						})
+					} else {
+						fetchResult = spawnSync('git', [
+							'fetch',
+							'origin',
+							`${newBase}:refs/remotes/newbase/${newBase}`
+						], {
+							cwd: childPath,
+							stdio: 'pipe',
+						})
+					}
+
+					if (fetchResult.status !== 0) {
+						throw new Error('Failed to fetch base branch')
+					}
+
+					// Rebase onto new base
+					const rebaseResult = spawnSync('git', [
+						'rebase',
+						`newbase/${newBase}`
+					], {
+						cwd: childPath,
+						stdio: 'inherit',
+					})
+
+					if (rebaseResult.status !== 0) {
+						throw new Error('Rebase failed')
+					}
+
+					// Update stack metadata
+					if (parent) {
+						// Verify parent workspace still exists before updating metadata
+						const parentPath = join(workspacesDir, parent.workspaceName)
+						if (existsSync(parentPath)) {
+							setStackMetadata(currentProject, child, {
+								basedOn: parent.workspaceName,
+								baseBranch: parent.branch,
+							})
+						} else {
+							// Parent workspace was deleted, remove child from stack
+							removeStackMetadata(currentProject, child)
+							logger.debug(
+								`Parent workspace "${parent.workspaceName}" no longer exists. ` +
+								`Removed "${child}" from stack.`
+							)
+						}
+					} else {
+						// No parent - remove from stack
+						removeStackMetadata(currentProject, child)
+					}
+
+					logger.success(`  ✓ Rebased ${child}`)
+				} catch (error) {
+					logger.error(`  ✗ Failed to rebase ${child}`)
+					logger.error(`    ${error instanceof Error ? error.message : 'Unknown error'}`)
+					logger.warning(`    You may need to manually rebase this workspace`)
+				}
+			}
+		} else {
+			// Remove anyway - just remove stack metadata for children
+			logger.warning('Orphaning dependent workspaces...')
+			for (const child of children) {
+				removeStackMetadata(currentProject, child)
+			}
+		}
+	}
+
 	// Kill tmux session if it exists
 	if (await sessionExists(workspaceName)) {
 		// Check if we're currently in the session we're trying to kill
@@ -150,6 +274,9 @@ export async function removeWorkspace(
 	await removeWorktree(baseDir, workspacePath, true)
 
 	logger.success(`Removed worktree: ${workspaceName}`)
+
+	// Remove stack metadata for this workspace
+	removeStackMetadata(currentProject, workspaceName)
 
 	// Ask about deleting local branch unless --keep-branch
 	if (!options.keepBranch) {

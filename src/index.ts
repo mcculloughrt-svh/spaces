@@ -15,6 +15,8 @@ import { listProjects, listWorkspaces } from './commands/list.js'
 import { removeWorkspace, removeProject } from './commands/remove.js'
 import { ensureDependencies } from './utils/deps.js'
 import { getProjectDirectory } from './commands/directory.js'
+import { rebaseStack } from './commands/rebase-stack.js'
+import { createPR } from './commands/pr.js'
 
 const program = new Command()
 
@@ -22,7 +24,7 @@ const program = new Command()
 program
 	.name('spaces')
 	.description('CLI tool for managing GitHub repository workspaces')
-	.version('1.0.0')
+	.version('1.1.0')
 
 // First-time setup check
 async function checkFirstTimeSetup(): Promise<void> {
@@ -80,6 +82,10 @@ addCommand
 		'Specify different branch name from workspace name'
 	)
 	.option('--from <branch>', 'Create from specific branch instead of base')
+	.option(
+		'--stacked',
+		'Create workspace stacked on current or selected workspace branch'
+	)
 	.option('--no-tmux', "Don't create/attach tmux session")
 	.option('--no-setup', 'Skip setup commands')
 	.action(async (workspaceName, options) => {
@@ -158,6 +164,7 @@ listCommand
 	.description('List workspaces in current project')
 	.option('--json', 'Output in JSON format')
 	.option('--verbose', 'Show additional details')
+	.option('--tree', 'Show workspace stack tree visualization')
 	.action(async (options) => {
 		await checkFirstTimeSetup()
 		try {
@@ -168,14 +175,18 @@ listCommand
 	})
 
 // Default list command (alias for list workspaces)
-listCommand.action(async (options) => {
-	await checkFirstTimeSetup()
-	try {
-		await listWorkspaces(options)
-	} catch (error) {
-		handleError(error)
-	}
-})
+listCommand
+	.option('--json', 'Output in JSON format')
+	.option('--verbose', 'Show additional details')
+	.option('--tree', 'Show workspace stack tree visualization')
+	.action(async (options) => {
+		await checkFirstTimeSetup()
+		try {
+			await listWorkspaces(options)
+		} catch (error) {
+			handleError(error)
+		}
+	})
 
 // ============================================================================
 // Remove Commands
@@ -242,6 +253,41 @@ directoryCommand.action(async (options) => {
 		handleError(error)
 	}
 })
+
+// ============================================================================
+// Stacked PR Commands
+// ============================================================================
+
+program
+	.command('rebase-stack')
+	.description('Rebase current workspace onto its parent workspace')
+	.option('--auto', 'Skip confirmation prompt')
+	.action(async (options) => {
+		await checkFirstTimeSetup()
+		try {
+			await rebaseStack(options)
+		} catch (error) {
+			handleError(error)
+		}
+	})
+
+program
+	.command('pr')
+	.description(
+		'Create pull request with automatic base branch detection for stacked PRs'
+	)
+	.allowUnknownOption()
+	.action(async (options, command) => {
+		await checkFirstTimeSetup()
+		try {
+			// Get all arguments after 'pr' command
+			const args = command.args || []
+			await createPR(args)
+		} catch (error) {
+			handleError(error)
+		}
+	})
+
 // ============================================================================
 // Error Handling
 // ============================================================================

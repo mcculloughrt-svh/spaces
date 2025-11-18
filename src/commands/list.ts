@@ -17,6 +17,8 @@ import { sessionExists } from '../core/tmux.js'
 import { logger } from '../utils/logger.js'
 import { SpacesError, NoProjectError } from '../types/errors.js'
 import type { ProjectInfo, WorktreeInfo } from '../types/workspace.js'
+import { getStackMetadata, getStackTree, isStackOutOfSync } from '../utils/stack.js'
+import type { StackTreeNode } from '../utils/stack.js'
 
 /**
  * List all projects
@@ -99,6 +101,7 @@ export async function listWorkspaces(
 	options: {
 		json?: boolean
 		verbose?: boolean
+		tree?: boolean
 	} = {}
 ): Promise<void> {
 	const currentProject = getCurrentProject()
@@ -145,6 +148,14 @@ export async function listWorkspaces(
 		return
 	}
 
+	// Tree visualization mode
+	if (options.tree) {
+		const tree = await getStackTree(currentProject)
+		logger.bold(`Workspaces (${currentProject}) - Tree View:`)
+		await displayTree(tree, workspacesDir)
+		return
+	}
+
 	logger.bold(`Workspaces (${currentProject}):`)
 
 	for (const workspace of workspaces) {
@@ -169,6 +180,21 @@ export async function listWorkspaces(
 		// Active tmux session
 		if (workspace.hasActiveTmuxSession) {
 			parts.push('(active tmux)'.padEnd(10))
+		}
+
+		// Stack parent information
+		const stackMetadata = getStackMetadata(currentProject, workspace.name)
+		if (stackMetadata) {
+			parts.push(`[based on: ${stackMetadata.basedOn}]`)
+
+			// Check if out of sync with parent
+			const parentPath = join(workspacesDir, stackMetadata.basedOn)
+			if (existsSync(parentPath)) {
+				const behindCount = await isStackOutOfSync(workspace.path, parentPath)
+				if (behindCount !== null && behindCount > 0) {
+					parts.push(`⚠️  Behind base by ${behindCount} commits`)
+				}
+			}
 		}
 
 		// Stale workspace warning
@@ -205,4 +231,58 @@ function truncateName(
 
 function addSpace(size: number): string {
 	return ' '.repeat(size)
+}
+
+/**
+ * Display tree visualization recursively
+ */
+async function displayTree(
+	nodes: StackTreeNode[],
+	workspacesDir: string,
+	prefix = '',
+	isLast = true
+): Promise<void> {
+	for (let i = 0; i < nodes.length; i++) {
+		const node = nodes[i]
+		const isLastNode = i === nodes.length - 1
+		const connector = isLastNode ? '└── ' : '├── '
+		const childPrefix = prefix + (isLastNode ? '    ' : '│   ')
+
+		// Get workspace info for status
+		const workspacePath = join(workspacesDir, node.workspaceName)
+		const info = await getWorktreeInfo(workspacePath)
+
+		if (!info) {
+			// Skip if we can't get info
+			continue
+		}
+
+		// Build status parts
+		const statusParts: string[] = []
+
+		// Ahead/behind
+		if (info.ahead > 0 || info.behind > 0) {
+			statusParts.push(`+${info.ahead} -${info.behind}`)
+		}
+
+		// Uncommitted changes
+		if (info.uncommittedChanges > 0) {
+			statusParts.push(`${info.uncommittedChanges} uncommitted`)
+		}
+
+		// Active tmux
+		const hasSession = await sessionExists(node.workspaceName)
+		if (hasSession) {
+			statusParts.push('(active)')
+		}
+
+		const statusStr = statusParts.length > 0 ? ` [${statusParts.join(', ')}]` : ''
+
+		logger.log(`${prefix}${connector}${node.workspaceName} (${node.branch})${statusStr}`)
+
+		// Recursively display children
+		if (node.children.length > 0) {
+			await displayTree(node.children, workspacesDir, childPrefix, isLastNode)
+		}
+	}
 }

@@ -3,6 +3,16 @@
  */
 
 /**
+ * Stack metadata for tracking parent-child relationships between workspaces
+ */
+export interface StackMetadata {
+  /** Name of the parent workspace this is based on */
+  basedOn: string;
+  /** Name of the parent branch */
+  baseBranch: string;
+}
+
+/**
  * Global configuration stored in ~/spaces/.config.json
  */
 export interface GlobalConfig {
@@ -32,6 +42,8 @@ export interface ProjectConfig {
   linearTeamKey?: string;
   /** Optional LLM assistant command to run in tmux (e.g., "claude", "aider") */
   llmAssistant?: string;
+  /** Stack metadata for tracking workspace relationships */
+  stacks?: Record<string, StackMetadata>;
   /** ISO timestamp when project was created */
   createdAt: string;
   /** ISO timestamp when project was last accessed */
