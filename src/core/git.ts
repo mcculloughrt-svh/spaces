@@ -155,10 +155,23 @@ export async function createWorktree(
     } else {
       // Branch doesn't exist, create new from base
       logger.debug(`Creating new branch from ${baseBranch}: ${branchName}`);
-      await execAsync(
-        `git worktree add -b ${escapeShellArg(branchName)} ${escapeShellArg(workspacePath)} ${escapeShellArg(`origin/${baseBranch}`)}`,
-        { cwd: repoPath }
-      );
+
+      // Check if baseBranch exists locally (for stacked workspaces with unpushed parents)
+      if (await checkLocalBranch(repoPath, baseBranch)) {
+        // Use local branch (common for stacked workspaces that haven't been pushed)
+        logger.debug(`Using local branch as base: ${baseBranch}`);
+        await execAsync(
+          `git worktree add -b ${escapeShellArg(branchName)} ${escapeShellArg(workspacePath)} ${escapeShellArg(baseBranch)}`,
+          { cwd: repoPath }
+        );
+      } else {
+        // Use origin/baseBranch (standard case)
+        logger.debug(`Using remote branch as base: origin/${baseBranch}`);
+        await execAsync(
+          `git worktree add -b ${escapeShellArg(branchName)} ${escapeShellArg(workspacePath)} ${escapeShellArg(`origin/${baseBranch}`)}`,
+          { cwd: repoPath }
+        );
+      }
     }
   } catch (error) {
     if (error instanceof SpacesError) {

@@ -3,7 +3,7 @@
  * Handles both 'spaces add project' and 'spaces add [workspace-name]'
  */
 
-import { existsSync, copyFileSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, copyFileSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import {
   readGlobalConfig,
@@ -27,6 +27,7 @@ import {
   createWorktree,
   checkRemoteBranch,
   listRemoteBranches,
+  getWorktreeInfo,
 } from '../core/git.js';
 import { createOrAttachSession } from '../core/tmux.js';
 import { fetchUnstartedIssues } from '../core/linear.js';
@@ -36,6 +37,8 @@ import {
   isValidWorkspaceName,
   extractRepoName,
 } from '../utils/sanitize.js';
+import { getCurrentWorkspace } from '../utils/workspace-detection.js';
+import { setStackMetadata, detectCircularDependency } from '../utils/stack.js';
 import {
   SpacesError,
   NoProjectError,
@@ -334,6 +337,111 @@ export async function addWorkspace(
     }
   }
 
+  // Handle stacked workspace creation
+  let stackParentWorkspace: string | null = null;
+  let stackParentBranch: string | null = null;
+
+  if (options.stacked) {
+    const currentWorkspace = await getCurrentWorkspace();
+
+    if (currentWorkspace) {
+      // User is currently in a workspace, use it as the base
+      stackParentWorkspace = currentWorkspace.workspaceName;
+      stackParentBranch = currentWorkspace.branch;
+      options.fromBranch = currentWorkspace.branch;
+      logger.info(`Stacking on current workspace: ${stackParentWorkspace} (${stackParentBranch})`);
+    } else {
+      // User is not in a workspace, show selector
+      const workspaces = readdirSync(workspacesDir).filter((name) => {
+        const path = join(workspacesDir, name);
+        return existsSync(path);
+      });
+
+      if (workspaces.length === 0) {
+        throw new SpacesError(
+          'No workspaces found to stack on. Create a base workspace first.',
+          'USER_ERROR',
+          1
+        );
+      }
+
+      // Build workspace options with branch info
+      const workspaceOptions: string[] = [];
+      for (const workspace of workspaces) {
+        const wsPath = join(workspacesDir, workspace);
+        const info = await getWorktreeInfo(wsPath);
+        if (info) {
+          const display = `${workspace.padEnd(30)} ${info.branch}`;
+          workspaceOptions.push(display);
+        }
+      }
+
+      if (workspaceOptions.length === 0) {
+        throw new SpacesError(
+          'No valid workspaces found to stack on.',
+          'USER_ERROR',
+          1
+        );
+      }
+
+      const selected = await selectItem(workspaceOptions, 'Select workspace to stack on:');
+
+      if (!selected) {
+        logger.info('Cancelled');
+        return;
+      }
+
+      // Extract workspace name (first part before padding)
+      stackParentWorkspace = selected.split(/\s+/)[0];
+      const parentPath = join(workspacesDir, stackParentWorkspace);
+      const parentInfo = await getWorktreeInfo(parentPath);
+      if (!parentInfo) {
+        throw new SpacesError(
+          `Could not get information for workspace "${stackParentWorkspace}"`,
+          'SYSTEM_ERROR',
+          2
+        );
+      }
+      stackParentBranch = parentInfo.branch;
+      options.fromBranch = stackParentBranch;
+      logger.info(`Stacking on: ${stackParentWorkspace} (${stackParentBranch})`);
+    }
+
+    // Check for circular dependency
+    if (stackParentWorkspace && detectCircularDependency(currentProject, stackParentWorkspace, workspaceName)) {
+      throw new SpacesError(
+        `Cannot create stacked workspace: This would create a circular dependency.\n` +
+        `Workspace "${workspaceName}" cannot be based on "${stackParentWorkspace}" because ` +
+        `"${stackParentWorkspace}" is already based (directly or indirectly) on "${workspaceName}".`,
+        'USER_ERROR',
+        1
+      );
+    }
+
+    // Check for branch name conflicts
+    if (stackParentWorkspace) {
+      const parentWorkspacePath = join(workspacesDir, stackParentWorkspace);
+      try {
+        const branchExistsOnParent = await checkRemoteBranch(parentWorkspacePath, branchName);
+
+        if (branchExistsOnParent) {
+          logger.warning(
+            `Warning: Branch "${branchName}" already exists in parent workspace.\n` +
+            `This may cause conflicts. Consider using a different branch name with --branch.`
+          );
+
+          const confirmed = await promptConfirm('Continue anyway?', false);
+          if (!confirmed) {
+            logger.info('Cancelled');
+            return;
+          }
+        }
+      } catch {
+        // Ignore errors from checkRemoteBranch - might not have remote yet
+      }
+    }
+  }
+
   // Create worktree
   const baseBranch = options.fromBranch || projectConfig.baseBranch;
   await createWorktree(
@@ -345,6 +453,15 @@ export async function addWorkspace(
   );
 
   logger.success(`Created worktree from ${baseBranch}`);
+
+  // Save stack metadata if this is a stacked workspace
+  if (stackParentWorkspace && stackParentBranch) {
+    setStackMetadata(currentProject, workspaceName, {
+      basedOn: stackParentWorkspace,
+      baseBranch: stackParentBranch,
+    });
+    logger.debug(`Saved stack metadata: ${workspaceName} -> ${stackParentWorkspace}`);
+  }
 
   // Copy tmux template if it exists
   const projectDir = getProjectDir(currentProject);

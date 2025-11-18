@@ -68,6 +68,8 @@ export interface CreateWorkspaceOptions {
 	branchName?: string
 	/** Base branch to create from (defaults to project base branch) */
 	fromBranch?: string
+	/** Whether to create workspace stacked on another workspace */
+	stacked?: boolean
 	/** Whether to skip tmux session creation */
 	noTmux?: boolean
 	/** Whether to skip running setup commands */
