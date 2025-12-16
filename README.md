@@ -30,19 +30,11 @@ gh auth login
 ## Installation
 
 ```bash
-# Clone this repository
-git clone https://github.com/mcculloughrt-svh/spaces.git
+bun install -g github:mcculloughrt-svh/spaces
+```
 
-# Install dependencies
-bun install
-
-# Build the CLI
-bun run build
-
-# Link the CLI globally
-bun link
-
-# Verify installation
+Verify installation:
+```bash
 spaces --version
 ```
 
@@ -548,20 +540,24 @@ This allows you to safely pull down branches created by teammates.
 ### Build from Source
 
 ```bash
-# Install dependencies
-npm install
+# Clone the repository
+git clone https://github.com/mcculloughrt-svh/spaces.git
+cd spaces
 
-# Development mode (with watch)
-npm run dev
+# Install dependencies
+bun install
+
+# Link for local development
+bun link
 
 # Type checking
-npm run typecheck
+bun run typecheck
 
-# Build for production
-npm run build
+# Build (optional - bun runs TypeScript directly)
+bun run build
 
 # Run linter
-npm run lint
+bun run lint
 ```
 
 ### Project Structure
