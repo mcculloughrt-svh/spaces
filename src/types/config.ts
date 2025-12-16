@@ -30,8 +30,6 @@ export interface ProjectConfig {
   linearApiKey?: string;
   /** Optional Linear team key for filtering issues (e.g., "ENG") */
   linearTeamKey?: string;
-  /** Optional LLM assistant command to run in tmux (e.g., "claude", "aider") */
-  llmAssistant?: string;
   /** ISO timestamp when project was created */
   createdAt: string;
   /** ISO timestamp when project was last accessed */
@@ -56,8 +54,7 @@ export function createDefaultProjectConfig(
   repository: string,
   baseBranch: string,
   linearApiKey?: string,
-  linearTeamKey?: string,
-  llmAssistant?: string
+  linearTeamKey?: string
 ): ProjectConfig {
   const now = new Date().toISOString();
   return {
@@ -66,7 +63,6 @@ export function createDefaultProjectConfig(
     baseBranch,
     linearApiKey,
     linearTeamKey,
-    llmAssistant,
     createdAt: now,
     lastAccessed: now,
   };

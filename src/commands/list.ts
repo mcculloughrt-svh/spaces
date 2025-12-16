@@ -13,7 +13,6 @@ import {
 	readGlobalConfig,
 } from '../core/config.js'
 import { getWorktreeInfo } from '../core/git.js'
-import { sessionExists } from '../core/tmux.js'
 import { logger } from '../utils/logger.js'
 import { SpacesError, NoProjectError } from '../types/errors.js'
 import type { ProjectInfo, WorktreeInfo } from '../types/workspace.js'
@@ -134,8 +133,6 @@ export async function listWorkspaces(
 		const info = await getWorktreeInfo(workspacePath)
 
 		if (info) {
-			// Check for active tmux session
-			info.hasActiveTmuxSession = await sessionExists(name)
 			workspaces.push(info)
 		}
 	}
@@ -164,11 +161,6 @@ export async function listWorkspaces(
 			parts.push(`${workspace.uncommittedChanges} uncommitted`.padEnd(20))
 		} else {
 			parts.push('clean'.padEnd(20))
-		}
-
-		// Active tmux session
-		if (workspace.hasActiveTmuxSession) {
-			parts.push('(active tmux)'.padEnd(10))
 		}
 
 		// Stale workspace warning

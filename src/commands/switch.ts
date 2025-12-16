@@ -14,7 +14,7 @@ import {
 } from '../core/config.js';
 import { selectItem } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
-import { createOrAttachSession, sessionExists } from '../core/tmux.js';
+import { openWorkspaceShell } from '../core/shell.js';
 import { getWorktreeInfo } from '../core/git.js';
 import { SpacesError, NoProjectError } from '../types/errors.js';
 import { join } from 'path';
@@ -74,10 +74,6 @@ export async function switchProject(projectNameArg?: string): Promise<void> {
   // Set as current project
   setCurrentProject(projectName);
   logger.success(`Switched to project: ${projectName}`);
-
-  // Print environment variable suggestion
-  logger.log('\nUpdate your environment:');
-  logger.command(`  export SPACES_CURRENT_PROJECT="${projectName}"`);
 }
 
 /**
@@ -86,8 +82,7 @@ export async function switchProject(projectNameArg?: string): Promise<void> {
 export async function switchWorkspace(
   workspaceNameArg?: string,
   options: {
-    noTmux?: boolean;
-    newWindow?: boolean;
+    noShell?: boolean;
     force?: boolean;
   } = {}
 ): Promise<void> {
@@ -213,13 +208,12 @@ export async function switchWorkspace(
   const workspacePath = join(workspacesDir, workspaceName);
 
   // Switch to workspace
-  if (options.noTmux) {
+  if (options.noShell) {
     logger.success(`Workspace: ${workspacePath}`);
     logger.log(`\nTo navigate:\n  cd ${workspacePath}`);
   } else {
-    // Create or attach to tmux session
-    await createOrAttachSession(
-      workspaceName,
+    // Open workspace shell
+    await openWorkspaceShell(
       workspacePath,
       currentProject,
       projectConfig.repository,
@@ -246,9 +240,6 @@ async function gatherWorkspaceCandidates(
     const info = await getWorktreeInfo(path);
 
     if (info) {
-      // Check for active tmux session
-      const hasActiveTmuxSession = await sessionExists(name);
-
       candidates.push({
         name: info.name,
         path: info.path,
@@ -257,7 +248,6 @@ async function gatherWorkspaceCandidates(
         behind: info.behind,
         uncommittedChanges: info.uncommittedChanges,
         lastCommit: info.lastCommit,
-        hasActiveTmuxSession,
       });
     }
   }
@@ -270,7 +260,6 @@ async function gatherWorkspaceCandidates(
  *
  * Additional ranking factors:
  * - Shorter workspace names get +5 bonus (easier to type)
- * - Active tmux sessions get +10 bonus (likely working on it)
  *
  * @param matches Fuzzy match results
  * @returns Ranked workspace results
@@ -284,11 +273,6 @@ function rankMatches(
     // Bonus for shorter names (easier to remember/type)
     if (match.item.name.length <= 15) {
       finalScore += 5;
-    }
-
-    // Bonus for active tmux session (likely current work)
-    if (match.item.hasActiveTmuxSession) {
-      finalScore += 10;
     }
 
     return {
@@ -338,8 +322,8 @@ async function selectFromRanked(
 /**
  * Format a ranked workspace for display in selection list
  *
- * Format: "name    [branch +A -B] status (tmux)"
- * Example: "my-feature    [main +2 -0] clean (tmux)"
+ * Format: "name    [branch +A -B] status"
+ * Example: "my-feature    [main +2 -0] clean"
  *
  * @param ranked Ranked workspace
  * @returns Formatted string for display
@@ -363,11 +347,6 @@ function formatWorkspaceChoice(ranked: RankedWorkspace): string {
     parts.push(`${ws.uncommittedChanges} uncommitted`);
   } else {
     parts.push('clean');
-  }
-
-  // Active tmux indicator
-  if (ws.hasActiveTmuxSession) {
-    parts.push('(tmux)');
   }
 
   return parts.join(' ');

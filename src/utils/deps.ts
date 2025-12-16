@@ -35,12 +35,6 @@ export const REQUIRED_DEPS: Dependency[] = [
     installUrl: 'https://git-scm.com/',
   },
   {
-    name: 'tmux',
-    command: 'tmux',
-    checkArgs: ['-V'],
-    installUrl: 'https://github.com/tmux/tmux/wiki',
-  },
-  {
     name: 'jq',
     command: 'jq',
     checkArgs: ['--version'],

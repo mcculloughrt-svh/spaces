@@ -1,7 +1,7 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 // Import the built CLI
-import('../dist/index.js').catch((error) => {
+import('../src/index.ts').catch((error) => {
   console.error('Failed to load CLI:', error);
   process.exit(1);
 });

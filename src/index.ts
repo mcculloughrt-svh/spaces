@@ -1,8 +1,8 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 /**
  * Spaces CLI - Main entry point
- * Manages GitHub repository workspaces using git worktrees, tmux sessions, and Linear integration
+ * Manages GitHub repository workspaces using git worktrees and Linear integration
  */
 
 import { Command } from 'commander'
@@ -15,6 +15,7 @@ import { listProjects, listWorkspaces } from './commands/list.js'
 import { removeWorkspace, removeProject } from './commands/remove.js'
 import { ensureDependencies } from './utils/deps.js'
 import { getProjectDirectory } from './commands/directory.js'
+import { launchTUI } from './tui/index.js'
 
 const program = new Command()
 
@@ -80,7 +81,7 @@ addCommand
 		'Specify different branch name from workspace name'
 	)
 	.option('--from <branch>', 'Create from specific branch instead of base')
-	.option('--no-tmux', "Don't create/attach tmux session")
+	.option('--no-shell', "Don't open interactive shell after creating workspace")
 	.option('--no-setup', 'Skip setup commands')
 	.action(async (workspaceName, options) => {
 		await checkFirstTimeSetup()
@@ -115,11 +116,7 @@ switchCommand
 
 switchCommand
 	.argument('[workspace-name]', 'Name of the workspace to switch to')
-	.option('--no-tmux', 'Just cd to workspace without tmux')
-	.option(
-		'--new-window',
-		'Create new window in existing session instead of attaching'
-	)
+	.option('--no-shell', "Don't open interactive shell, just print path")
 	.option('-f, --force', 'Jump to first fuzzy match without confirmation')
 	.action(async (workspaceName, options) => {
 		await checkFirstTimeSetup()
@@ -279,4 +276,19 @@ process.on('unhandledRejection', (reason) => {
 })
 
 // Parse command line arguments
-program.parse()
+// If no args provided, launch TUI
+if (process.argv.length === 2) {
+	// No command provided - launch TUI
+	checkFirstTimeSetup()
+		.then(() => launchTUI())
+		.catch((error) => {
+			if (error instanceof SpacesError) {
+				logger.error(error.message)
+				process.exit(error.exitCode)
+			}
+			logger.error(`Failed to launch TUI: ${error instanceof Error ? error.message : 'Unknown error'}`)
+			process.exit(1)
+		})
+} else {
+	program.parse()
+}

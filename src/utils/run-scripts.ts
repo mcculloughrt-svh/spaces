@@ -6,13 +6,8 @@
 import { existsSync, readdirSync, statSync } from 'fs';
 import { spawn } from 'child_process';
 import { join } from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { SpacesError } from '../types/errors.js';
 import { logger } from './logger.js';
-import { escapeShellArg } from './shell-escape.js';
-
-const execAsync = promisify(exec);
 
 /**
  * Discover executable scripts in a directory
@@ -110,44 +105,3 @@ export async function runScriptsInTerminal(
   logger.success(`${phaseName} scripts completed`);
 }
 
-/**
- * Run scripts inside a tmux session
- * Used for setup and select scripts that run in the tmux environment
- */
-export async function runScriptsInTmux(
-  sessionName: string,
-  scriptsDir: string,
-  workspaceName: string,
-  repository: string
-): Promise<void> {
-  const scripts = discoverScripts(scriptsDir);
-
-  if (scripts.length === 0) {
-    logger.debug(`No scripts to run in ${scriptsDir}`);
-    return;
-  }
-
-  const phaseName = scriptsDir.split('/').pop() || 'scripts';
-  logger.debug(`Running ${phaseName} scripts in tmux session...`);
-
-  for (const scriptPath of scripts) {
-    const scriptName = scriptPath.split('/').pop() || scriptPath;
-    const command = `${scriptPath} ${workspaceName} ${repository}`;
-
-    logger.debug(`  Running in tmux: ${scriptName} ${workspaceName} ${repository}`);
-
-    try {
-      await execAsync(`tmux send-keys -t ${escapeShellArg(sessionName)} ${escapeShellArg(command)} C-m`);
-      // Small delay to allow command to start
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    } catch (error) {
-      throw new SpacesError(
-        `Failed to send script to tmux: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'SYSTEM_ERROR',
-        2
-      );
-    }
-  }
-
-  logger.debug(`Sent ${scripts.length} ${phaseName} scripts to tmux session`);
-}

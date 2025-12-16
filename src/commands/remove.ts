@@ -21,7 +21,6 @@ import {
 	deleteLocalBranch,
 	getWorktreeInfo,
 } from '../core/git.js'
-import { killSession, sessionExists, getCurrentSessionName } from '../core/tmux.js'
 import { logger } from '../utils/logger.js'
 import { selectItem, promptConfirm, promptInput } from '../utils/prompts.js'
 import { SpacesError, NoProjectError } from '../types/errors.js'
@@ -116,23 +115,6 @@ export async function removeWorkspace(
 			logger.info('Cancelled')
 			return
 		}
-	}
-
-	// Kill tmux session if it exists
-	if (await sessionExists(workspaceName)) {
-		// Check if we're currently in the session we're trying to kill
-		const currentSession = await getCurrentSessionName()
-		if (currentSession === workspaceName) {
-			logger.error(
-				`Cannot remove workspace while inside its tmux session "${workspaceName}"`
-			)
-			logger.info('Please detach from this tmux session and run the command again')
-			logger.info('  Detach: Press Ctrl+b, then d')
-			process.exit(1)
-		}
-
-		logger.info('Killing tmux session...')
-		await killSession(workspaceName)
 	}
 
 	// Run remove scripts (cleanup before deletion)
@@ -241,18 +223,6 @@ export async function removeProject(
 		if (confirmName !== projectName) {
 			logger.info('Cancelled (name mismatch)')
 			return
-		}
-	}
-
-	// Kill all tmux sessions for workspaces
-	if (existsSync(workspacesDir)) {
-		const workspaces = readdirSync(workspacesDir)
-
-		for (const workspace of workspaces) {
-			if (await sessionExists(workspace)) {
-				logger.info(`Killing tmux session: ${workspace}`)
-				await killSession(workspace)
-			}
 		}
 	}
 

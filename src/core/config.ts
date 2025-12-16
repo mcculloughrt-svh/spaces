@@ -322,16 +322,14 @@ export function createProject(
 	repository: string,
 	baseBranch: string,
 	linearApiKey?: string,
-	linearTeamKey?: string,
-	llmAssistant?: string
+	linearTeamKey?: string
 ): ProjectConfig {
 	const config = createDefaultProjectConfig(
 		projectName,
 		repository,
 		baseBranch,
 		linearApiKey,
-		linearTeamKey,
-		llmAssistant
+		linearTeamKey
 	)
 
 	// Create project directories
@@ -343,61 +341,6 @@ export function createProject(
 	mkdirSync(baseDir, { recursive: true })
 	mkdirSync(workspacesDir, { recursive: true })
 
-	// Create tmux template file
-	let tmuxTemplate = `# Tmux Configuration Template
-#
-# This file is automatically copied to .tmux.conf in each new workspace.
-# Customize this template to set up your preferred tmux layout for all workspaces.
-#
-# Common uses:
-#   - Split windows into panes
-#   - Create multiple windows
-#   - Set default layouts
-#   - Configure key bindings (workspace-specific)
-#
-# Note: This gets sourced AFTER your global ~/.tmux.conf (if you have one),
-# so you can override global settings here or add workspace-specific layouts.
-`
-
-	// Add LLM assistant split pane configuration if enabled
-	if (llmAssistant) {
-		tmuxTemplate += `
-# LLM Assistant Split Pane
-# Split window vertically (50/50)
-split-window -h -c "#{pane_current_path}"
-
-# Select left pane and run LLM assistant
-select-pane -t 0
-send-keys '${llmAssistant}' C-m
-
-# Select right pane as default (where user starts)
-select-pane -t 1
-`
-	} else {
-		tmuxTemplate += `
-# Example: Split window horizontally (create right pane at 30% width)
-# split-window -h -p 30 -c "#{pane_current_path}"
-
-# Example: Split the left pane vertically
-# select-pane -t 0
-# split-window -v -p 50 -c "#{pane_current_path}"
-
-# Example: Create multiple windows
-# new-window -n "tests"
-# new-window -n "logs"
-# select-window -t 0
-
-# Example: Set a tiled layout
-# select-layout tiled
-
-# Example: Select a specific pane to start in
-# select-pane -t 0
-`
-	}
-
-	const tmuxTemplatePath = join(projectDir, 'tmux.template.conf')
-	writeFileSync(tmuxTemplatePath, tmuxTemplate, 'utf-8')
-
 	// Create scripts directories
 	mkdirSync(getScriptsPhaseDir(projectName, 'pre'), { recursive: true })
 	mkdirSync(getScriptsPhaseDir(projectName, 'setup'), { recursive: true })
@@ -406,7 +349,7 @@ select-pane -t 1
 
 	// Create example template scripts in each phase directory
 	const preExampleScript = `#!/bin/bash
-# Pre-phase script - runs BEFORE tmux session creation
+# Pre-phase script - runs BEFORE workspace shell opens
 #
 # Current working directory: ~/spaces/<project>/workspaces/<workspace>/
 # (Scripts run from the workspace directory, so you can use relative paths)
@@ -433,12 +376,12 @@ echo "Running Spaces pre-install on: $WORKSPACE_NAME from $REPOSITORY"
 `
 
 	const setupExampleScript = `#!/bin/bash
-# Setup-phase script - runs ONCE in tmux session (first time only)
+# Setup-phase script - runs ONCE when workspace is first created
 #
 # Current working directory: ~/spaces/<project>/workspaces/<workspace>/
 # (Scripts run from the workspace directory, so you can use relative paths)
 #
-# This script runs inside the tmux session the first time a workspace is created.
+# This script runs the first time a workspace is created.
 # Perfect for one-time setup tasks like:
 #   - Installing dependencies (npm install, bundle install)
 #   - Initial builds (npm run build)
@@ -464,13 +407,13 @@ echo "Setting up Spaces workspace on: $WORKSPACE_NAME from $REPOSITORY"
 `
 
 	const selectExampleScript = `#!/bin/bash
-# Select-phase script - runs EVERY TIME in tmux session
+# Select-phase script - runs EVERY TIME you switch to a workspace
 #
 # Current working directory: ~/spaces/<project>/workspaces/<workspace>/
 # (Scripts run from the workspace directory, so you can use relative paths)
 #
-# This script runs inside the tmux session every time you switch to or create
-# a new session for an existing workspace (where setup already completed).
+# This script runs every time you switch to an existing workspace
+# (where setup already completed).
 # Perfect for quick status updates like:
 #   - Fetching latest changes (git fetch --all)
 #   - Checking workspace state (git status)

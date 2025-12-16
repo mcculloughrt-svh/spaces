@@ -20,8 +20,6 @@ export interface WorkspaceCandidate {
   uncommittedChanges: number;
   /** Last commit message */
   lastCommit: string;
-  /** Has active tmux session */
-  hasActiveTmuxSession: boolean;
 }
 
 /**

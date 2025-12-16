@@ -22,8 +22,6 @@ export interface WorktreeInfo {
 	lastCommit: string
 	/** Last commit date */
 	lastCommitDate: Date
-	/** Whether a tmux session is active for this workspace */
-	hasActiveTmuxSession: boolean
 }
 
 /**
@@ -68,8 +66,8 @@ export interface CreateWorkspaceOptions {
 	branchName?: string
 	/** Base branch to create from (defaults to project base branch) */
 	fromBranch?: string
-	/** Whether to skip tmux session creation */
-	noTmux?: boolean
+	/** Whether to skip opening interactive shell */
+	noShell?: boolean
 	/** Whether to skip running setup commands */
 	noSetup?: boolean
 }

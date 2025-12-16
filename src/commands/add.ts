@@ -3,16 +3,14 @@
  * Handles both 'spaces add project' and 'spaces add [workspace-name]'
  */
 
-import { existsSync, copyFileSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
-  readGlobalConfig,
   readProjectConfig,
   createProject,
   setCurrentProject,
   getProjectBaseDir,
   getProjectWorkspacesDir,
-  getProjectDir,
   getCurrentProject,
   getAllProjectNames,
   projectExists,
@@ -28,7 +26,7 @@ import {
   checkRemoteBranch,
   listRemoteBranches,
 } from '../core/git.js';
-import { createOrAttachSession } from '../core/tmux.js';
+import { openWorkspaceShell } from '../core/shell.js';
 import { fetchUnstartedIssues } from '../core/linear.js';
 import {
   sanitizeForFileSystem,
@@ -134,23 +132,13 @@ export async function addProject(options: {
     linearTeamKey = await promptInput('Enter Linear team key (optional, e.g., ENG):') || undefined;
   }
 
-  // Ask about LLM assistant in tmux
-  const useLlmAssistant = await promptConfirm('Do you want an LLM assistant in tmux?', false);
-
-  let llmAssistant: string | undefined;
-
-  if (useLlmAssistant) {
-    llmAssistant = await promptInput('Enter the command to run (e.g., "claude", "aider", "codex"):') || undefined;
-  }
-
   // Create project configuration
   createProject(
     projectName,
     selectedRepo,
     baseBranch,
     linearApiKey,
-    linearTeamKey,
-    llmAssistant
+    linearTeamKey
   );
 
   logger.success(`Project '${projectName}' created`);
@@ -158,10 +146,6 @@ export async function addProject(options: {
   // Set as current project
   setCurrentProject(projectName);
   logger.success('Set as current project');
-
-  // Print environment variable suggestion
-  logger.log('\nAdd this to your shell profile to persist:');
-  logger.command(`  export SPACES_CURRENT_PROJECT="${projectName}"`);
 }
 
 /**
@@ -346,16 +330,6 @@ export async function addWorkspace(
 
   logger.success(`Created worktree from ${baseBranch}`);
 
-  // Copy tmux template if it exists
-  const projectDir = getProjectDir(currentProject);
-  const tmuxTemplatePath = join(projectDir, 'tmux.template.conf');
-  const tmuxConfPath = join(workspacePath, '.tmux.conf');
-
-  if (existsSync(tmuxTemplatePath)) {
-    copyFileSync(tmuxTemplatePath, tmuxConfPath);
-    logger.debug(`Copied tmux.template.conf to workspace .tmux.conf`);
-  }
-
   // If workspace was created from a Linear issue, save issue details as markdown
   if (selectedLinearIssue) {
     const promptDir = join(workspacePath, '.prompt');
@@ -377,11 +351,10 @@ export async function addWorkspace(
     await runScriptsInTerminal(preScriptsDir, workspacePath, workspaceName, projectConfig.repository);
   }
 
-  // Create/attach tmux session unless --no-tmux
-  if (!options.noTmux) {
-    logger.success(`Creating tmux session: ${workspaceName}`);
-    await createOrAttachSession(
-      workspaceName,
+  // Open workspace shell unless --no-shell
+  if (!options.noShell) {
+    logger.success(`Opening workspace: ${workspaceName}`);
+    await openWorkspaceShell(
       workspacePath,
       currentProject,
       projectConfig.repository,
