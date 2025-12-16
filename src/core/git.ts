@@ -140,10 +140,10 @@ export async function createWorktree(
 
     // Determine how to create the worktree
     if (existsRemotely) {
-      // Branch exists on remote, create from remote branch
+      // Branch exists on remote, create from remote branch with upstream tracking
       logger.debug(`Creating worktree from remote branch: ${branchName}`);
       await execAsync(
-        `git worktree add ${escapeShellArg(workspacePath)} -b ${escapeShellArg(branchName)} ${escapeShellArg(`origin/${branchName}`)}`,
+        `git worktree add --track -b ${escapeShellArg(branchName)} ${escapeShellArg(workspacePath)} ${escapeShellArg(`origin/${branchName}`)}`,
         { cwd: repoPath }
       );
     } else if (await checkLocalBranch(repoPath, branchName)) {
