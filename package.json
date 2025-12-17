@@ -1,6 +1,6 @@
 {
   "name": "spaces-cli",
-  "version": "1.0.0",
+  "version": "0.1.5",
   "description": "CLI tool for managing GitHub repository workspaces using git worktrees and Linear integration",
   "bin": {
     "spaces": "./bin/spaces"
@@ -25,16 +25,19 @@
     "@inquirer/prompts": "^7.2.0",
     "@linear/sdk": "^29.0.0",
     "@opentui/core": "^0.1.60",
+    "@opentui/react": "^0.1.60",
     "chalk": "^5.3.0",
     "commander": "^12.0.0",
     "conf": "^12.0.0",
     "ora": "^8.0.1",
+    "react": "^19.2.3",
     "simple-git": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.20",
-    "typescript": "^5.3.3",
-    "eslint": "^8.57.0"
+    "@types/react": "^19.2.7",
+    "eslint": "^8.57.0",
+    "typescript": "^5.3.3"
   },
   "engines": {
     "node": ">=18.0.0"

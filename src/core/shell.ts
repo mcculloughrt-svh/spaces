@@ -23,19 +23,20 @@ function printToTerminal(message: string): void {
  * 2. Run the appropriate scripts in the terminal
  * 3. Spawn an interactive subshell in the workspace directory
  * 4. User gets control of the shell with their environment ready
+ *
+ * @param selectOnly - If true, only run select scripts (skip setup check). Used by TUI which handles setup during creation.
  */
 export async function openWorkspaceShell(
 	workspacePath: string,
 	projectName: string,
 	repository: string,
-	noSetup: boolean = false
+	noSetup: boolean = false,
+	selectOnly: boolean = false
 ): Promise<void> {
 	const workspaceName = workspacePath.split('/').pop() || 'workspace'
-	const setupAlreadyRun = hasSetupBeenRun(workspacePath)
 
-	// Determine which scripts to run based on setup status
-	if (setupAlreadyRun) {
-		// Setup has been run before, run select scripts
+	if (selectOnly) {
+		// TUI mode: setup was done during creation, just run select scripts
 		const selectScriptsDir = getScriptsPhaseDir(projectName, 'select')
 		await runScriptsInTerminal(
 			selectScriptsDir,
@@ -43,20 +44,34 @@ export async function openWorkspaceShell(
 			workspaceName,
 			repository
 		)
-	} else if (!noSetup) {
-		// First time setup, run setup scripts
-		printToTerminal('Running setup scripts (first time)...')
-		const setupScriptsDir = getScriptsPhaseDir(projectName, 'setup')
-		await runScriptsInTerminal(
-			setupScriptsDir,
-			workspacePath,
-			workspaceName,
-			repository
-		)
+	} else {
+		const setupAlreadyRun = hasSetupBeenRun(workspacePath)
 
-		// Mark setup as complete
-		markSetupComplete(workspacePath)
-		printToTerminal('✓ Setup complete')
+		// Determine which scripts to run based on setup status
+		if (setupAlreadyRun) {
+			// Setup has been run before, run select scripts
+			const selectScriptsDir = getScriptsPhaseDir(projectName, 'select')
+			await runScriptsInTerminal(
+				selectScriptsDir,
+				workspacePath,
+				workspaceName,
+				repository
+			)
+		} else if (!noSetup) {
+			// First time setup, run setup scripts
+			printToTerminal('Running setup scripts (first time)...')
+			const setupScriptsDir = getScriptsPhaseDir(projectName, 'setup')
+			await runScriptsInTerminal(
+				setupScriptsDir,
+				workspacePath,
+				workspaceName,
+				repository
+			)
+
+			// Mark setup as complete
+			markSetupComplete(workspacePath)
+			printToTerminal('✓ Setup complete')
+		}
 	}
 
 	printToTerminal('')

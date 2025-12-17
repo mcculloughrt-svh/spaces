@@ -3,5 +3,5 @@
  * Exports the main TUI launcher
  */
 
-export { launchTUI, SpacesTUI } from './app.js';
+export { launchTUI, SpacesTUI } from './app.jsx';
 export * from './state.js';
