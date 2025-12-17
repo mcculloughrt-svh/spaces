@@ -1,8 +1,7 @@
 /**
  * User prompt utilities using @inquirer/prompts
+ * Note: @inquirer/prompts is lazy-loaded to improve CLI startup time
  */
-
-import { search, input, confirm, password } from '@inquirer/prompts';
 
 /**
  * Select an item from a searchable list
@@ -19,6 +18,7 @@ export async function selectItem(
   }
 
   try {
+    const { search } = await import('@inquirer/prompts');
     const selected = await search({
       message,
       source: async (input) => {
@@ -56,6 +56,7 @@ export async function promptInput(
   } = {}
 ): Promise<string | null> {
   try {
+    const { input } = await import('@inquirer/prompts');
     const value = await input({
       message,
       default: options.default,
@@ -80,6 +81,7 @@ export async function promptConfirm(
   defaultValue = false
 ): Promise<boolean> {
   try {
+    const { confirm } = await import('@inquirer/prompts');
     const value = await confirm({
       message,
       default: defaultValue,
@@ -101,6 +103,7 @@ export async function promptPassword(
   message: string
 ): Promise<string | null> {
   try {
+    const { password } = await import('@inquirer/prompts');
     const value = await password({
       message,
       mask: true,

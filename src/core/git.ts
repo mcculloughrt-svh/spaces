@@ -197,6 +197,7 @@ export async function removeWorktree(
 
 /**
  * Get information about a worktree
+ * Runs git commands in parallel for better performance
  */
 export async function getWorktreeInfo(workspacePath: string): Promise<WorktreeInfo | null> {
   try {
@@ -204,14 +205,30 @@ export async function getWorktreeInfo(workspacePath: string): Promise<WorktreeIn
       return null;
     }
 
-    // Get current branch
-    const { stdout: branchOutput } = await execAsync(
-      'git rev-parse --abbrev-ref HEAD',
-      { cwd: workspacePath }
-    );
-    const branch = branchOutput.trim();
+    // Run independent git commands in parallel
+    const [branchResult, statusResult, logResult] = await Promise.all([
+      // Get current branch
+      execAsync('git rev-parse --abbrev-ref HEAD', { cwd: workspacePath }),
+      // Get uncommitted changes count
+      execAsync('git status --porcelain', { cwd: workspacePath }),
+      // Get last commit info (combined into one call)
+      execAsync('git log -1 --pretty=format:"%s|%aI"', { cwd: workspacePath }),
+    ]);
 
-    // Get commits ahead/behind
+    const branch = branchResult.stdout.trim();
+
+    // Parse status output
+    const uncommittedChanges = statusResult.stdout
+      .trim()
+      .split('\n')
+      .filter((line) => line.length > 0).length;
+
+    // Parse combined log output
+    const logParts = logResult.stdout.trim().split('|');
+    const lastCommitMsg = logParts[0] || 'No commits';
+    const lastCommitDateStr = logParts[1] || '';
+
+    // Get commits ahead/behind (depends on branch name, so can't run in initial parallel batch)
     let ahead = 0;
     let behind = 0;
     try {
@@ -227,25 +244,6 @@ export async function getWorktreeInfo(workspacePath: string): Promise<WorktreeIn
       logger.debug(`Could not get ahead/behind for ${branch}`);
     }
 
-    // Get uncommitted changes count
-    const { stdout: statusOutput } = await execAsync('git status --porcelain', {
-      cwd: workspacePath,
-    });
-    const uncommittedChanges = statusOutput
-      .trim()
-      .split('\n')
-      .filter((line) => line.length > 0).length;
-
-    // Get last commit info
-    const { stdout: lastCommitMsg } = await execAsync(
-      'git log -1 --pretty=format:"%s"',
-      { cwd: workspacePath }
-    );
-    const { stdout: lastCommitDate } = await execAsync(
-      'git log -1 --pretty=format:"%aI"',
-      { cwd: workspacePath }
-    );
-
     const name = workspacePath.split('/').pop() || '';
 
     return {
@@ -255,8 +253,8 @@ export async function getWorktreeInfo(workspacePath: string): Promise<WorktreeIn
       ahead,
       behind,
       uncommittedChanges,
-      lastCommit: lastCommitMsg.trim() || 'No commits',
-      lastCommitDate: lastCommitDate ? new Date(lastCommitDate) : new Date(),
+      lastCommit: lastCommitMsg,
+      lastCommitDate: lastCommitDateStr ? new Date(lastCommitDateStr) : new Date(),
       hasActiveTmuxSession: false, // Will be populated by tmux module
     };
   } catch (error) {

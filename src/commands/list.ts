@@ -125,20 +125,23 @@ export async function listWorkspaces(
 		return
 	}
 
-	// Get workspace info
-	const workspaces: WorktreeInfo[] = []
+	// Get workspace info in parallel for better performance
 	const globalConfig = readGlobalConfig()
 
-	for (const name of workspaceNames) {
-		const workspacePath = join(workspacesDir, name)
-		const info = await getWorktreeInfo(workspacePath)
+	const workspaceResults = await Promise.all(
+		workspaceNames.map(async (name) => {
+			const workspacePath = join(workspacesDir, name)
+			const info = await getWorktreeInfo(workspacePath)
 
-		if (info) {
-			// Check for active tmux session
-			info.hasActiveTmuxSession = await sessionExists(name)
-			workspaces.push(info)
-		}
-	}
+			if (info) {
+				// Check for active tmux session
+				info.hasActiveTmuxSession = await sessionExists(name)
+			}
+			return info
+		})
+	)
+
+	const workspaces = workspaceResults.filter((info): info is WorktreeInfo => info !== null)
 
 	if (options.json) {
 		console.log(JSON.stringify(workspaces, null, 2))

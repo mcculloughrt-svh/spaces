@@ -1,11 +1,16 @@
 /**
  * Linear API integration for issue management
+ * Note: @linear/sdk is lazy-loaded to improve CLI startup time
  */
 
-import { LinearClient, LinearError, type Issue } from '@linear/sdk'
 import { SpacesError } from '../types/errors.js'
 import { logger } from '../utils/logger.js'
 import type { LinearIssue } from '../types/workspace.js'
+
+// Lazy-loaded types
+type LinearClient = InstanceType<typeof import('@linear/sdk').LinearClient>
+type Issue = Awaited<ReturnType<LinearClient['issues']>>['nodes'][number]
+type LinearError = InstanceType<typeof import('@linear/sdk').LinearError>
 
 /**
  * Singleton Linear client instance
@@ -15,8 +20,9 @@ let clientInstance: LinearClient | null = null
 /**
  * Get or create Linear client instance
  */
-function getLinearClient(apiKey: string): LinearClient {
+async function getLinearClient(apiKey: string): Promise<LinearClient> {
 	if (!clientInstance) {
+		const { LinearClient } = await import('@linear/sdk')
 		clientInstance = new LinearClient({ apiKey })
 	}
 	return clientInstance
@@ -44,6 +50,14 @@ export class LinearAPIError extends SpacesError {
 }
 
 /**
+ * Check if an error is a LinearError
+ */
+async function isLinearError(error: unknown): Promise<boolean> {
+	const { LinearError } = await import('@linear/sdk')
+	return error instanceof LinearError
+}
+
+/**
  * Retry a function with exponential backoff
  */
 async function fetchWithRetry<T>(
@@ -62,9 +76,9 @@ async function fetchWithRetry<T>(
 			let shouldRetry = false
 			let statusCode: number | undefined
 
-			if (error instanceof LinearError) {
+			if (await isLinearError(error)) {
 				// @ts-ignore - response may or may not have status
-				statusCode = error.response?.status
+				statusCode = (error as { response?: { status?: number } }).response?.status
 			}
 
 			if (statusCode === 429 || (statusCode && statusCode >= 500)) {
@@ -128,7 +142,7 @@ export async function fetchUnstartedIssues(
 ): Promise<LinearIssue[]> {
 	try {
 		return await fetchWithRetry(async () => {
-			const client = getLinearClient(apiKey)
+			const client = await getLinearClient(apiKey)
 
 			// Build filter for unstarted issues
 			const filter = {
@@ -198,8 +212,8 @@ export async function fetchUnstartedIssues(
 			throw error
 		}
 
-		if (error instanceof LinearError) {
-			throw new LinearAPIError(`Linear API error: ${error.message}`, error)
+		if (await isLinearError(error)) {
+			throw new LinearAPIError(`Linear API error: ${(error as Error).message}`, error)
 		}
 
 		throw new LinearAPIError(
@@ -216,6 +230,7 @@ export async function fetchUnstartedIssues(
  */
 export async function validateLinearApiKey(apiKey: string): Promise<boolean> {
 	try {
+		const { LinearClient } = await import('@linear/sdk')
 		const testClient = new LinearClient({ apiKey })
 		await testClient.viewer
 		return true
