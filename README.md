@@ -30,12 +30,17 @@ gh auth login
 ## Installation
 
 ```bash
-bun install -g github:mcculloughrt-svh/spaces
+bun install -g @mcculloughrt-svh/spaces
 ```
 
 Verify installation:
 ```bash
 spaces --version
+```
+
+To update:
+```bash
+bun update -g @mcculloughrt-svh/spaces
 ```
 
 ## Quick Start

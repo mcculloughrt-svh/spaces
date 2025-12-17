@@ -1,11 +1,22 @@
 {
-  "name": "spaces-cli",
+  "name": "@mcculloughrt-svh/spaces",
   "version": "1.0.0",
   "description": "CLI tool for managing GitHub repository workspaces using git worktrees, tmux sessions, and Linear integration",
   "bin": {
     "spaces": "./bin/spaces"
   },
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mcculloughrt-svh/spaces.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsup src/index.ts --format esm --dts --clean --shims",
