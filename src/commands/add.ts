@@ -15,6 +15,7 @@ import {
   getAllProjectNames,
   projectExists,
   getScriptsPhaseDir,
+  updateProjectConfig,
 } from '../core/config.js';
 import { checkGitHubAuth, ensureDependencies } from '../utils/deps.js';
 import { selectItem, promptConfirm, promptPassword, promptInput } from '../utils/prompts.js';
@@ -44,6 +45,15 @@ import type { CreateWorkspaceOptions } from '../types/workspace.js';
 import { runScriptsInTerminal } from '../utils/run-scripts.js';
 import { hasSetupBeenRun } from '../utils/workspace-state.js';
 import { generateMarkdown } from '../utils/markdown.js';
+import {
+  detectBundleInRepo,
+  loadBundleFromPath,
+  loadBundleFromUrl,
+  copyBundleScripts,
+  cleanupBundleDir,
+} from '../core/bundle.js';
+import { runOnboarding } from '../utils/onboarding.js';
+import type { LoadedBundle, OnboardingResult } from '../types/bundle.js';
 
 /**
  * Add a new project
@@ -52,6 +62,9 @@ export async function addProject(options: {
   noClone?: boolean;
   org?: string;
   linearKey?: string;
+  bundleUrl?: string;
+  bundlePath?: string;
+  skipBundle?: boolean;
 }): Promise<void> {
   // Check dependencies
   await ensureDependencies();
@@ -116,6 +129,54 @@ export async function addProject(options: {
   const baseBranch = await getDefaultBranch(baseDir);
   logger.debug(`Detected default branch: ${baseBranch}`);
 
+  // Handle bundle detection and loading
+  let loadedBundle: LoadedBundle | null = null;
+  let onboardingResult: OnboardingResult | null = null;
+
+  if (!options.skipBundle) {
+    if (options.bundleUrl) {
+      // Load from explicit URL
+      loadedBundle = await loadBundleFromUrl(options.bundleUrl);
+    } else if (options.bundlePath) {
+      // Load from explicit local path
+      loadedBundle = loadBundleFromPath(options.bundlePath);
+    } else if (!options.noClone) {
+      // Detect bundle in cloned repo
+      const bundleDir = detectBundleInRepo(baseDir);
+      if (bundleDir) {
+        loadedBundle = loadBundleFromPath(bundleDir);
+        logger.info(`Detected spaces bundle: ${loadedBundle.bundle.name}`);
+      }
+    }
+
+    // Run onboarding if bundle has steps
+    if (loadedBundle?.bundle.onboarding && loadedBundle.bundle.onboarding.length > 0) {
+      const proceed = await promptConfirm(
+        `This repository has ${loadedBundle.bundle.onboarding.length} onboarding step(s). Run them now?`,
+        true
+      );
+
+      if (proceed) {
+        onboardingResult = await runOnboarding(loadedBundle.bundle.onboarding);
+
+        if (!onboardingResult.completed) {
+          const continueAnyway = await promptConfirm(
+            'Continue creating project without completing onboarding?',
+            false
+          );
+          if (!continueAnyway) {
+            // Clean up bundle temp dir if from URL
+            if (loadedBundle) {
+              cleanupBundleDir(loadedBundle.bundleDir);
+            }
+            logger.info('Cancelled');
+            return;
+          }
+        }
+      }
+    }
+  }
+
   // Ask about Linear integration
   const useLinear = await promptConfirm('Does this project use Linear?', false);
 
@@ -140,6 +201,30 @@ export async function addProject(options: {
     linearApiKey,
     linearTeamKey
   );
+
+  // Copy bundle scripts if bundle was loaded
+  if (loadedBundle) {
+    copyBundleScripts(loadedBundle.bundleDir, projectName);
+
+    // Store bundle values and info in project config
+    const configUpdates: Record<string, unknown> = {};
+
+    if (onboardingResult?.completed && Object.keys(onboardingResult.configValues).length > 0) {
+      configUpdates.bundleValues = onboardingResult.configValues;
+    }
+
+    configUpdates.appliedBundle = {
+      name: loadedBundle.bundle.name,
+      version: loadedBundle.bundle.version,
+      source: loadedBundle.source,
+      appliedAt: new Date().toISOString(),
+    };
+
+    updateProjectConfig(projectName, configUpdates);
+
+    // Clean up temp directory if bundle was from URL
+    cleanupBundleDir(loadedBundle.bundleDir);
+  }
 
   logger.success(`Project '${projectName}' created`);
 

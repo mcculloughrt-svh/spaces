@@ -17,6 +17,20 @@ export interface GlobalConfig {
 }
 
 /**
+ * Information about an applied bundle
+ */
+export interface AppliedBundle {
+  /** Bundle name */
+  name: string;
+  /** Bundle version */
+  version: string;
+  /** Source of the bundle (path or URL) */
+  source: string;
+  /** ISO timestamp when bundle was applied */
+  appliedAt: string;
+}
+
+/**
  * Project-specific configuration stored in ~/spaces/{PROJECT_NAME}/.config.json
  */
 export interface ProjectConfig {
@@ -34,6 +48,10 @@ export interface ProjectConfig {
   createdAt: string;
   /** ISO timestamp when project was last accessed */
   lastAccessed: string;
+  /** Custom values collected during bundle onboarding */
+  bundleValues?: Record<string, string>;
+  /** Information about the bundle that was applied */
+  appliedBundle?: AppliedBundle;
 }
 
 /**

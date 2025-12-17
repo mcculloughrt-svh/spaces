@@ -65,6 +65,9 @@ addCommand
 	.option('--no-clone', 'Create project structure without cloning')
 	.option('--org <org>', 'Filter repos to specific organization')
 	.option('--linear-key <key>', 'Provide Linear API key via flag')
+	.option('--bundle-url <url>', 'Load bundle from remote URL (zip archive)')
+	.option('--bundle-path <path>', 'Load bundle from local directory')
+	.option('--skip-bundle', 'Skip bundle detection and onboarding')
 	.action(async (options) => {
 		await checkFirstTimeSetup()
 		try {

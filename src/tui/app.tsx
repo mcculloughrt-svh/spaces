@@ -33,9 +33,16 @@ import { join } from 'path';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { generateMarkdown } from '../utils/markdown.js';
 import { runScriptsInTerminal } from '../utils/run-scripts.js';
-import { getScriptsPhaseDir } from '../core/config.js';
+import { getScriptsPhaseDir, updateProjectConfig } from '../core/config.js';
 import { markSetupComplete } from '../utils/workspace-state.js';
 import { createRequire } from 'module';
+import {
+  detectBundleInRepo,
+  loadBundleFromPath,
+  copyBundleScripts,
+} from '../core/bundle.js';
+import { runOnboarding } from '../utils/onboarding.js';
+import { promptConfirm } from '../utils/prompts.js';
 
 // Version from package.json
 const require = createRequire(import.meta.url);
@@ -74,6 +81,7 @@ type FlowState =
   | { type: 'new-project-loading' }
   | { type: 'new-project-select'; repos: string[]; selectedIndex: number }
   | { type: 'new-project-cloning'; repo: string }
+  | { type: 'new-project-onboarding'; repo: string; projectName: string; baseBranch: string }
   // New Workspace flow
   | { type: 'new-workspace-source'; selectedIndex: number; hasLinear: boolean }
   | { type: 'new-workspace-loading'; source: 'branch' | 'linear' }
@@ -358,7 +366,97 @@ function App({ onQuit, onOpenShell }: { onQuit: () => void; onOpenShell: (projec
       const baseDir = getProjectBaseDir(projectName);
       await cloneRepository(repo, baseDir);
       const baseBranch = await getDefaultBranch(baseDir);
-      createProject(projectName, repo, baseBranch);
+
+      // Check for bundle in cloned repo
+      const bundleDir = detectBundleInRepo(baseDir);
+      if (bundleDir) {
+        try {
+          const loadedBundle = loadBundleFromPath(bundleDir);
+
+          // If bundle has onboarding steps, run them
+          if (loadedBundle.bundle.onboarding && loadedBundle.bundle.onboarding.length > 0) {
+            // Show onboarding state briefly then suspend for CLI prompts
+            setFlow({ type: 'new-project-onboarding', repo, projectName, baseBranch });
+
+            // Suspend renderer and run CLI-based onboarding
+            renderer.suspend();
+            console.log(`\n📦 Bundle detected: ${loadedBundle.bundle.name}\n`);
+
+            const proceed = await promptConfirm(
+              `This repository has ${loadedBundle.bundle.onboarding.length} onboarding step(s). Run them now?`,
+              true
+            );
+
+            if (proceed) {
+              const onboardingResult = await runOnboarding(loadedBundle.bundle.onboarding);
+
+              // Create project first
+              createProject(projectName, repo, baseBranch);
+
+              // Copy bundle scripts
+              copyBundleScripts(loadedBundle.bundleDir, projectName);
+
+              // Store bundle values and info
+              const configUpdates: Record<string, unknown> = {};
+              if (onboardingResult.completed && Object.keys(onboardingResult.configValues).length > 0) {
+                configUpdates.bundleValues = onboardingResult.configValues;
+              }
+              configUpdates.appliedBundle = {
+                name: loadedBundle.bundle.name,
+                version: loadedBundle.bundle.version,
+                source: loadedBundle.source,
+                appliedAt: new Date().toISOString(),
+              };
+              updateProjectConfig(projectName, configUpdates);
+
+              if (!onboardingResult.completed) {
+                console.log('\n⚠️  Onboarding was not completed. You can re-run it later.\n');
+              }
+            } else {
+              // User skipped onboarding, still create project and copy scripts
+              createProject(projectName, repo, baseBranch);
+              copyBundleScripts(loadedBundle.bundleDir, projectName);
+
+              // Store bundle info without values
+              updateProjectConfig(projectName, {
+                appliedBundle: {
+                  name: loadedBundle.bundle.name,
+                  version: loadedBundle.bundle.version,
+                  source: loadedBundle.source,
+                  appliedAt: new Date().toISOString(),
+                },
+              });
+            }
+
+            console.log('\nPress Enter to continue...');
+            await new Promise<void>(resolve => {
+              process.stdin.once('data', () => resolve());
+            });
+
+            renderer.resume();
+          } else {
+            // Bundle exists but no onboarding steps, just copy scripts
+            createProject(projectName, repo, baseBranch);
+            copyBundleScripts(loadedBundle.bundleDir, projectName);
+            updateProjectConfig(projectName, {
+              appliedBundle: {
+                name: loadedBundle.bundle.name,
+                version: loadedBundle.bundle.version,
+                source: loadedBundle.source,
+                appliedAt: new Date().toISOString(),
+              },
+            });
+          }
+        } catch (bundleErr) {
+          // Bundle loading failed, continue without bundle
+          console.error('Failed to load bundle:', bundleErr);
+          createProject(projectName, repo, baseBranch);
+        }
+      } else {
+        // No bundle found
+        createProject(projectName, repo, baseBranch);
+      }
+
       setCurrentProject(projectName);
 
       // Refresh projects
@@ -374,7 +472,7 @@ function App({ onQuit, onOpenShell }: { onQuit: () => void; onOpenShell: (projec
       setError(err instanceof Error ? err.message : 'Failed to clone repository');
       setFlow({ type: 'none' });
     }
-  }, []);
+  }, [renderer]);
 
   // Start new workspace flow
   const startNewWorkspaceFlow = useCallback(() => {
@@ -850,6 +948,15 @@ function App({ onQuit, onOpenShell }: { onQuit: () => void; onOpenShell: (projec
       return (
         <Modal title="New Project" height={5}>
           <text fg={COLORS.loading} paddingTop={1}>Cloning {flow.repo}...</text>
+        </Modal>
+      );
+    }
+
+    if (flow.type === 'new-project-onboarding') {
+      return (
+        <Modal title="Bundle Onboarding" height={6}>
+          <text fg={COLORS.loading} paddingTop={1}>Running onboarding for {flow.projectName}...</text>
+          <text fg={COLORS.textDim}>Check terminal for prompts</text>
         </Modal>
       );
     }
