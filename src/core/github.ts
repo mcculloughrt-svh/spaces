@@ -149,3 +149,47 @@ export async function cloneRepository(
 		)
 	}
 }
+
+/**
+ * PR state type
+ */
+export type PRState = 'merged' | 'open' | 'closed' | 'none'
+
+/**
+ * Get the PR state for a branch in a specific repository
+ * @param repository Repository in "owner/repo" format
+ * @param branchName The branch name to search for
+ * @returns The PR state: 'merged', 'open', 'closed', or 'none' if no PR exists
+ */
+export async function getPRStateForBranch(
+	repository: string,
+	branchName: string
+): Promise<PRState> {
+	try {
+		const { stdout } = await execAsync(
+			`gh pr list --repo "${repository}" --head "${branchName}" --state all --json state,mergedAt --limit 1`
+		)
+
+		const prs = JSON.parse(stdout.trim() || '[]')
+
+		if (prs.length === 0) {
+			return 'none'
+		}
+
+		// Check if merged (mergedAt will be non-null for merged PRs)
+		if (prs[0].mergedAt) {
+			return 'merged'
+		}
+
+		// Return the state (OPEN or CLOSED)
+		return prs[0].state.toLowerCase() as PRState
+	} catch (error) {
+		logger.debug(
+			`Failed to get PR state for branch ${branchName}: ${
+				error instanceof Error ? error.message : 'Unknown error'
+			}`
+		)
+		// Return 'none' on error to be safe (don't delete workspaces if we can't check)
+		return 'none'
+	}
+}
