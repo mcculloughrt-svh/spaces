@@ -365,17 +365,6 @@ export async function addWorkspace(
     }
   }
 
-  // Also copy tmux template for backwards compatibility if using a different backend
-  if (backend.id !== 'tmux') {
-    const tmuxTemplatePath = join(projectDir, 'tmux.template.conf');
-    const tmuxConfPath = join(workspacePath, '.tmux.conf');
-
-    if (existsSync(tmuxTemplatePath)) {
-      copyFileSync(tmuxTemplatePath, tmuxConfPath);
-      logger.debug(`Copied tmux.template.conf to workspace .tmux.conf (for compatibility)`);
-    }
-  }
-
   // If workspace was created from a Linear issue, save issue details as markdown
   if (selectedLinearIssue) {
     const promptDir = join(workspacePath, '.prompt');

@@ -5,6 +5,7 @@
 
 import {
 	readGlobalConfig,
+	updateGlobalConfig,
 	setMultiplexerPreference,
 	getMultiplexerPreference,
 } from '../core/config.js'
@@ -14,11 +15,11 @@ import {
 	isBackendAvailable,
 } from '../multiplexers/index.js'
 import { logger } from '../utils/logger.js'
-import { selectItem } from '../utils/prompts.js'
+import { selectItem, promptInput } from '../utils/prompts.js'
 import type { MultiplexerId } from '../types/config.js'
 
 /**
- * Show current configuration
+ * Show current configuration and allow editing
  */
 export async function showConfig(): Promise<void> {
 	const globalConfig = readGlobalConfig()
@@ -36,6 +37,52 @@ export async function showConfig(): Promise<void> {
 		`  Preference: ${globalConfig.multiplexer || 'auto-detect'}`
 	)
 	logger.log(`  Active Backend: ${currentBackend.displayName}`)
+	logger.log('')
+
+	// Show edit menu
+	const options = [
+		`Default Base Branch (${globalConfig.defaultBaseBranch})`,
+		`Stale Days (${globalConfig.staleDays})`,
+		`Multiplexer (${globalConfig.multiplexer || 'auto-detect'})`,
+		'Exit',
+	]
+
+	const selected = await selectItem(options, 'Edit a setting:')
+
+	if (!selected || selected === 'Exit') {
+		return
+	}
+
+	if (selected.startsWith('Default Base Branch')) {
+		const newValue = await promptInput('Enter new default base branch:', {
+			default: globalConfig.defaultBaseBranch,
+			validate: (input) => input.trim().length > 0 || 'Branch name cannot be empty',
+		})
+
+		if (newValue) {
+			updateGlobalConfig({ defaultBaseBranch: newValue.trim() })
+			logger.success(`Default base branch set to: ${newValue.trim()}`)
+		}
+	} else if (selected.startsWith('Stale Days')) {
+		const newValue = await promptInput('Enter number of days before workspace is stale:', {
+			default: String(globalConfig.staleDays),
+			validate: (input) => {
+				const num = parseInt(input, 10)
+				if (isNaN(num) || num < 1) {
+					return 'Must be a positive number'
+				}
+				return true
+			},
+		})
+
+		if (newValue) {
+			const staleDays = parseInt(newValue, 10)
+			updateGlobalConfig({ staleDays })
+			logger.success(`Stale days set to: ${staleDays}`)
+		}
+	} else if (selected.startsWith('Multiplexer')) {
+		await setMultiplexer()
+	}
 }
 
 /**
