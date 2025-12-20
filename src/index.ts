@@ -16,6 +16,7 @@ import { removeWorkspace, removeProject } from './commands/remove.js'
 import { showConfig, setMultiplexer, listMultiplexers } from './commands/config.js'
 import { ensureDependencies } from './utils/deps.js'
 import { getProjectDirectory } from './commands/directory.js'
+import { runOnboarding } from './commands/onboarding.js'
 
 const program = new Command()
 
@@ -44,10 +45,10 @@ async function checkFirstTimeSetup(): Promise<void> {
 
 		// Initialize spaces
 		initializeSpaces()
+		logger.success('Spaces initialized!')
 
-		logger.success('Spaces initialized!\n')
-		logger.log('Get started by adding a project:')
-		logger.command('  spaces add project\n')
+		// Run interactive onboarding
+		await runOnboarding()
 	}
 }
 
