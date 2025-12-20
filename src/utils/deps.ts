@@ -11,9 +11,9 @@ import { logger } from './logger.js';
 const execAsync = promisify(exec);
 
 /**
- * Required system dependencies
+ * Core system dependencies (always required)
  */
-export const REQUIRED_DEPS: Dependency[] = [
+export const CORE_DEPS: Dependency[] = [
   {
     name: 'GitHub CLI',
     command: 'gh',
@@ -35,18 +35,47 @@ export const REQUIRED_DEPS: Dependency[] = [
     installUrl: 'https://git-scm.com/',
   },
   {
-    name: 'tmux',
-    command: 'tmux',
-    checkArgs: ['-V'],
-    installUrl: 'https://github.com/tmux/tmux/wiki',
-  },
-  {
     name: 'jq',
     command: 'jq',
     checkArgs: ['--version'],
     installUrl: 'https://stedolan.github.io/jq/',
   },
 ];
+
+/**
+ * Required system dependencies
+ * @deprecated Use CORE_DEPS and getRequiredDeps() instead
+ */
+export const REQUIRED_DEPS: Dependency[] = CORE_DEPS;
+
+/**
+ * Get all required dependencies including the selected multiplexer
+ */
+export async function getRequiredDeps(): Promise<Dependency[]> {
+  const deps = [...CORE_DEPS];
+
+  // Dynamically import to avoid circular dependencies
+  const { getBackend, getMultiplexerPreference } = await import('../core/config.js')
+    .then(async (config) => {
+      const { getBackend: gb } = await import('../multiplexers/index.js');
+      return { getBackend: gb, getMultiplexerPreference: config.getMultiplexerPreference };
+    });
+
+  const multiplexerPreference = getMultiplexerPreference();
+  const backend = await getBackend(multiplexerPreference);
+
+  // Add the selected multiplexer as a dependency (except shell which is always available)
+  if (backend.id !== 'shell') {
+    deps.push({
+      name: backend.displayName,
+      command: backend.getCommandName(),
+      checkArgs: ['--version'],
+      installUrl: backend.getInstallInstructions(),
+    });
+  }
+
+  return deps;
+}
 
 /**
  * Check if a command exists

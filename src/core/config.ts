@@ -13,7 +13,7 @@ import {
 } from 'fs'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
-import type { GlobalConfig, ProjectConfig } from '../types/config.js'
+import type { GlobalConfig, ProjectConfig, MultiplexerId } from '../types/config.js'
 import {
 	DEFAULT_GLOBAL_CONFIG,
 	createDefaultProjectConfig,
@@ -555,4 +555,20 @@ echo "Running Spaces cleanup on: $WORKSPACE_NAME from $REPOSITORY"
 	writeProjectConfig(projectName, config)
 
 	return config
+}
+
+/**
+ * Get the configured multiplexer preference
+ * Returns null for auto-detection
+ */
+export function getMultiplexerPreference(): MultiplexerId {
+	const globalConfig = readGlobalConfig()
+	return globalConfig.multiplexer
+}
+
+/**
+ * Set the multiplexer preference
+ */
+export function setMultiplexerPreference(multiplexer: MultiplexerId): void {
+	updateGlobalConfig({ multiplexer })
 }
