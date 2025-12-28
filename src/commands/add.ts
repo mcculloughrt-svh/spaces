@@ -159,10 +159,6 @@ export async function addProject(options: {
   // Set as current project
   setCurrentProject(projectName);
   logger.success('Set as current project');
-
-  // Print environment variable suggestion
-  logger.log('\nAdd this to your shell profile to persist:');
-  logger.command(`  export SPACES_CURRENT_PROJECT="${projectName}"`);
 }
 
 /**

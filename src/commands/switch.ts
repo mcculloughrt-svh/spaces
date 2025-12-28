@@ -75,10 +75,6 @@ export async function switchProject(projectNameArg?: string): Promise<void> {
   // Set as current project
   setCurrentProject(projectName);
   logger.success(`Switched to project: ${projectName}`);
-
-  // Print environment variable suggestion
-  logger.log('\nUpdate your environment:');
-  logger.command(`  export SPACES_CURRENT_PROJECT="${projectName}"`);
 }
 
 /**

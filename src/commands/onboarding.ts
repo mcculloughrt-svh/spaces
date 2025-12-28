@@ -16,8 +16,9 @@ import type { MultiplexerId } from '../types/config.js'
 /**
  * Run the first-time onboarding wizard
  * Prompts user to configure multiplexer preference and optionally create first project
+ * @returns Object indicating whether a project was added during onboarding
  */
-export async function runOnboarding(): Promise<void> {
+export async function runOnboarding(): Promise<{ projectAdded: boolean }> {
 	logger.log('')
 
 	// Ask if user wants to configure or skip
@@ -29,7 +30,7 @@ export async function runOnboarding(): Promise<void> {
 	if (!shouldConfigure) {
 		logger.log('\nUsing defaults (auto-detect multiplexer).')
 		logger.log('You can configure later with: spaces config\n')
-		return
+		return { projectAdded: false }
 	}
 
 	// Step 1: Multiplexer selection
@@ -38,7 +39,7 @@ export async function runOnboarding(): Promise<void> {
 	// User may have cancelled
 	if (multiplexer === undefined) {
 		logger.log('\nUsing defaults (auto-detect multiplexer).\n')
-		return
+		return { projectAdded: false }
 	}
 
 	setMultiplexerPreference(multiplexer)
@@ -58,8 +59,10 @@ export async function runOnboarding(): Promise<void> {
 
 	if (createProject) {
 		await addProject({})
+		return { projectAdded: true }
 	} else {
 		logger.log('\nYou can create a project later with: spaces add project\n')
+		return { projectAdded: false }
 	}
 }
 

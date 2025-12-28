@@ -27,7 +27,7 @@ program
 	.version('1.0.0')
 
 // First-time setup check
-async function checkFirstTimeSetup(): Promise<void> {
+async function checkFirstTimeSetup(): Promise<{ projectAdded: boolean }> {
 	if (isFirstTimeSetup()) {
 		logger.bold('Welcome to Spaces CLI!\n')
 		logger.log('Initializing spaces directory...\n')
@@ -48,8 +48,9 @@ async function checkFirstTimeSetup(): Promise<void> {
 		logger.success('Spaces initialized!')
 
 		// Run interactive onboarding
-		await runOnboarding()
+		return await runOnboarding()
 	}
+	return { projectAdded: false }
 }
 
 // ============================================================================
@@ -67,7 +68,11 @@ addCommand
 	.option('--org <org>', 'Filter repos to specific organization')
 	.option('--linear-key <key>', 'Provide Linear API key via flag')
 	.action(async (options) => {
-		await checkFirstTimeSetup()
+		const { projectAdded } = await checkFirstTimeSetup()
+		if (projectAdded) {
+			// Onboarding already added a project, skip
+			return
+		}
 		try {
 			await addProject(options)
 		} catch (error) {
