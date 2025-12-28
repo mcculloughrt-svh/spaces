@@ -16,6 +16,7 @@ import {
 } from '../multiplexers/index.js'
 import { logger } from '../utils/logger.js'
 import { selectItem, promptInput } from '../utils/prompts.js'
+import { isValidMultiplexerId } from '../types/config.js'
 import type { MultiplexerId } from '../types/config.js'
 
 /**
@@ -100,8 +101,8 @@ export async function setMultiplexer(
 		// Validate the argument
 		if (multiplexerArg === 'auto') {
 			selectedMultiplexer = null
-		} else if (backendIds.includes(multiplexerArg as any)) {
-			selectedMultiplexer = multiplexerArg as MultiplexerId
+		} else if (isValidMultiplexerId(multiplexerArg)) {
+			selectedMultiplexer = multiplexerArg
 		} else {
 			logger.error(`Unknown multiplexer: ${multiplexerArg}`)
 			logger.log(`\nAvailable options: auto, ${backendIds.join(', ')}`)
@@ -133,14 +134,20 @@ export async function setMultiplexer(
 		const match = selected.match(/^(\w+)/)
 		if (match) {
 			const choice = match[1]
-			selectedMultiplexer = choice === 'auto' ? null : (choice as MultiplexerId)
+			if (choice === 'auto') {
+				selectedMultiplexer = null
+			} else if (isValidMultiplexerId(choice)) {
+				selectedMultiplexer = choice
+			} else {
+				return
+			}
 		} else {
 			return
 		}
 	}
 
 	// Check if the selected backend is available
-	if (selectedMultiplexer && !(await isBackendAvailable(selectedMultiplexer as any))) {
+	if (selectedMultiplexer && !(await isBackendAvailable(selectedMultiplexer))) {
 		logger.warning(
 			`${selectedMultiplexer} is not installed. It will fall back to an available option.`
 		)

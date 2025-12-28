@@ -138,7 +138,7 @@ export async function listWorkspaces(
 
 			if (info) {
 				// Check for active session
-				info.hasActiveTmuxSession = await backend.sessionExists(name)
+				info.hasActiveSession = await backend.sessionExists(name)
 			}
 			return info
 		})
@@ -173,7 +173,7 @@ export async function listWorkspaces(
 		}
 
 		// Active session
-		if (workspace.hasActiveTmuxSession) {
+		if (workspace.hasActiveSession) {
 			parts.push('(active)'.padEnd(10))
 		}
 

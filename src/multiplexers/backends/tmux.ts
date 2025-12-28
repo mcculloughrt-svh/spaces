@@ -72,10 +72,21 @@ export class TmuxBackend implements MultiplexerBackend {
 	async attachSession(options: AttachSessionOptions): Promise<void> {
 		try {
 			if (this.isInsideSession()) {
-				logger.debug(`Inside tmux, switching to session: ${options.name}`)
-				await execAsync(
-					`tmux switch-client -t ${escapeShellArg(options.name)}`
-				)
+				if (options.newWindow) {
+					// Create a new window in the target session and switch to it
+					logger.debug(`Inside tmux, creating new window in session: ${options.name}`)
+					await execAsync(
+						`tmux new-window -t ${escapeShellArg(options.name)}`
+					)
+					await execAsync(
+						`tmux switch-client -t ${escapeShellArg(options.name)}`
+					)
+				} else {
+					logger.debug(`Inside tmux, switching to session: ${options.name}`)
+					await execAsync(
+						`tmux switch-client -t ${escapeShellArg(options.name)}`
+					)
+				}
 			} else {
 				logger.debug(`Attaching to tmux session: ${options.name}`)
 

@@ -29,8 +29,9 @@ let currentBackendId: BackendId | null = null
 export async function getBackend(
 	preferredId?: BackendId | null
 ): Promise<MultiplexerBackend> {
-	// Return cached instance if same preference
-	if (currentBackend && (!preferredId || preferredId === currentBackendId)) {
+	// Return cached instance if preference matches exactly
+	// Note: null (auto-detect) should not match a specific cached backend
+	if (currentBackend && preferredId === currentBackendId) {
 		return currentBackend
 	}
 
@@ -50,7 +51,7 @@ export async function getBackend(
 	// Auto-detect available backend
 	const backend = await detectBestBackend()
 	currentBackend = backend
-	currentBackendId = backend.id as BackendId
+	currentBackendId = null // Track that this was auto-detected
 	return backend
 }
 
@@ -107,4 +108,14 @@ export function createBackend(id: BackendId): MultiplexerBackend | null {
 export function clearBackendCache(): void {
 	currentBackend = null
 	currentBackendId = null
+}
+
+/**
+ * Get the current backend based on user preference
+ * Convenience helper that combines getMultiplexerPreference() + getBackend()
+ */
+export async function getCurrentBackend(): Promise<MultiplexerBackend> {
+	// Dynamic import to avoid circular dependencies
+	const { getMultiplexerPreference } = await import('../core/config.js')
+	return getBackend(getMultiplexerPreference())
 }

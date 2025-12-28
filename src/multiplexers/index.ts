@@ -37,6 +37,8 @@ export interface CreateOrAttachOptions {
 	preferredBackend?: BackendId | null
 	/** How to handle scripts when backend doesn't support send-keys */
 	scriptFallbackMode?: ScriptFallbackMode
+	/** Create new window in existing session instead of switching */
+	newWindow?: boolean
 }
 
 /**
@@ -183,7 +185,7 @@ export async function createOrAttachSession(
 
 	if (exists) {
 		logger.debug(`Session ${options.sessionName} exists, attaching...`)
-		await backend.attachSession({ name: options.sessionName })
+		await backend.attachSession({ name: options.sessionName, newWindow: options.newWindow })
 		return
 	}
 
@@ -263,5 +265,5 @@ export async function createOrAttachSession(
 	const attachName =
 		backend.id === 'shell' ? options.workspacePath : options.sessionName
 
-	await backend.attachSession({ name: attachName })
+	await backend.attachSession({ name: attachName, newWindow: options.newWindow })
 }

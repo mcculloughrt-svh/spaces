@@ -223,6 +223,7 @@ export async function switchWorkspace(
       repository: projectConfig.repository,
       noSetup: false, // never skip setup on switch
       preferredBackend: multiplexerPreference,
+      newWindow: options.newWindow,
     });
   }
 }
@@ -248,7 +249,7 @@ async function gatherWorkspaceCandidates(
 
     if (info) {
       // Check for active session
-      const hasActiveTmuxSession = await backend.sessionExists(name);
+      const hasActiveSession = await backend.sessionExists(name);
 
       candidates.push({
         name: info.name,
@@ -258,7 +259,7 @@ async function gatherWorkspaceCandidates(
         behind: info.behind,
         uncommittedChanges: info.uncommittedChanges,
         lastCommit: info.lastCommit,
-        hasActiveTmuxSession,
+        hasActiveSession,
       });
     }
   }
@@ -288,7 +289,7 @@ function rankMatches(
     }
 
     // Bonus for active session (likely current work)
-    if (match.item.hasActiveTmuxSession) {
+    if (match.item.hasActiveSession) {
       finalScore += 10;
     }
 
@@ -367,7 +368,7 @@ function formatWorkspaceChoice(ranked: RankedWorkspace): string {
   }
 
   // Active session indicator
-  if (ws.hasActiveTmuxSession) {
+  if (ws.hasActiveSession) {
     parts.push('(active)');
   }
 

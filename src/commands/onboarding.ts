@@ -11,6 +11,7 @@ import {
 } from '../multiplexers/registry.js'
 import { setMultiplexerPreference } from '../core/config.js'
 import { addProject } from './add.js'
+import { isValidMultiplexerId } from '../types/config.js'
 import type { MultiplexerId } from '../types/config.js'
 
 /**
@@ -100,7 +101,9 @@ async function selectMultiplexer(): Promise<MultiplexerId | undefined> {
 	const match = selected.match(/^(\w+)/)
 	if (match) {
 		const choice = match[1]
-		return choice as MultiplexerId
+		if (isValidMultiplexerId(choice)) {
+			return choice
+		}
 	}
 
 	return null

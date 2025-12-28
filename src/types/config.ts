@@ -5,6 +5,16 @@
 /** Available multiplexer backend IDs */
 export type MultiplexerId = 'tmux' | 'zellij' | 'shell' | null;
 
+/** Valid multiplexer IDs (excluding null/auto-detect) */
+const VALID_MULTIPLEXER_IDS = ['tmux', 'zellij', 'shell'] as const;
+
+/**
+ * Type guard to check if a value is a valid multiplexer ID
+ */
+export function isValidMultiplexerId(value: string): value is Exclude<MultiplexerId, null> {
+  return VALID_MULTIPLEXER_IDS.includes(value as any);
+}
+
 /**
  * Global configuration stored in ~/spaces/.config.json
  */
