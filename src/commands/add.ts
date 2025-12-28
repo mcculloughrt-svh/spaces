@@ -28,7 +28,8 @@ import {
   checkRemoteBranch,
   listRemoteBranches,
 } from '../core/git.js';
-import { createOrAttachSession } from '../core/tmux.js';
+import { createOrAttachSession, getBackend } from '../multiplexers/index.js';
+import { getMultiplexerPreference } from '../core/config.js';
 import { fetchUnstartedIssues } from '../core/linear.js';
 import {
   sanitizeForFileSystem,
@@ -158,10 +159,6 @@ export async function addProject(options: {
   // Set as current project
   setCurrentProject(projectName);
   logger.success('Set as current project');
-
-  // Print environment variable suggestion
-  logger.log('\nAdd this to your shell profile to persist:');
-  logger.command(`  export SPACES_CURRENT_PROJECT="${projectName}"`);
 }
 
 /**
@@ -346,14 +343,22 @@ export async function addWorkspace(
 
   logger.success(`Created worktree from ${baseBranch}`);
 
-  // Copy tmux template if it exists
+  // Copy multiplexer config template if it exists
   const projectDir = getProjectDir(currentProject);
-  const tmuxTemplatePath = join(projectDir, 'tmux.template.conf');
-  const tmuxConfPath = join(workspacePath, '.tmux.conf');
+  const multiplexerPreference = getMultiplexerPreference();
+  const backend = await getBackend(multiplexerPreference);
 
-  if (existsSync(tmuxTemplatePath)) {
-    copyFileSync(tmuxTemplatePath, tmuxConfPath);
-    logger.debug(`Copied tmux.template.conf to workspace .tmux.conf`);
+  const templateFileName = backend.getTemplateFileName();
+  const configFileName = backend.getConfigFileName();
+
+  if (templateFileName && configFileName) {
+    const templatePath = join(projectDir, templateFileName);
+    const configPath = join(workspacePath, configFileName);
+
+    if (existsSync(templatePath)) {
+      copyFileSync(templatePath, configPath);
+      logger.debug(`Copied ${templateFileName} to workspace ${configFileName}`);
+    }
   }
 
   // If workspace was created from a Linear issue, save issue details as markdown
@@ -377,16 +382,17 @@ export async function addWorkspace(
     await runScriptsInTerminal(preScriptsDir, workspacePath, workspaceName, projectConfig.repository);
   }
 
-  // Create/attach tmux session unless --no-tmux
+  // Create/attach session unless --no-tmux
   if (!options.noTmux) {
-    logger.success(`Creating tmux session: ${workspaceName}`);
-    await createOrAttachSession(
-      workspaceName,
+    logger.success(`Creating ${backend.displayName} session: ${workspaceName}`);
+    await createOrAttachSession({
+      sessionName: workspaceName,
       workspacePath,
-      currentProject,
-      projectConfig.repository,
-      options.noSetup || false
-    );
+      projectName: currentProject,
+      repository: projectConfig.repository,
+      noSetup: options.noSetup || false,
+      preferredBackend: multiplexerPreference,
+    });
   } else {
     logger.success(`Workspace created at: ${workspacePath}`);
     logger.log(`\nTo navigate:\n  cd ${workspacePath}`);

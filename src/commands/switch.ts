@@ -14,7 +14,8 @@ import {
 } from '../core/config.js';
 import { selectItem } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
-import { createOrAttachSession, sessionExists } from '../core/tmux.js';
+import { createOrAttachSession, getBackend } from '../multiplexers/index.js';
+import { getMultiplexerPreference } from '../core/config.js';
 import { getWorktreeInfo } from '../core/git.js';
 import { SpacesError, NoProjectError } from '../types/errors.js';
 import { join } from 'path';
@@ -74,10 +75,6 @@ export async function switchProject(projectNameArg?: string): Promise<void> {
   // Set as current project
   setCurrentProject(projectName);
   logger.success(`Switched to project: ${projectName}`);
-
-  // Print environment variable suggestion
-  logger.log('\nUpdate your environment:');
-  logger.command(`  export SPACES_CURRENT_PROJECT="${projectName}"`);
 }
 
 /**
@@ -217,14 +214,17 @@ export async function switchWorkspace(
     logger.success(`Workspace: ${workspacePath}`);
     logger.log(`\nTo navigate:\n  cd ${workspacePath}`);
   } else {
-    // Create or attach to tmux session
-    await createOrAttachSession(
-      workspaceName,
+    // Create or attach to session
+    const multiplexerPreference = getMultiplexerPreference();
+    await createOrAttachSession({
+      sessionName: workspaceName,
       workspacePath,
-      currentProject,
-      projectConfig.repository,
-      false // never skip setup on switch
-    );
+      projectName: currentProject,
+      repository: projectConfig.repository,
+      noSetup: false, // never skip setup on switch
+      preferredBackend: multiplexerPreference,
+      newWindow: options.newWindow,
+    });
   }
 }
 
@@ -240,14 +240,16 @@ async function gatherWorkspaceCandidates(
   workspaceNames: string[]
 ): Promise<WorkspaceCandidate[]> {
   const candidates: WorkspaceCandidate[] = [];
+  const multiplexerPreference = getMultiplexerPreference();
+  const backend = await getBackend(multiplexerPreference);
 
   for (const name of workspaceNames) {
     const path = join(workspacesDir, name);
     const info = await getWorktreeInfo(path);
 
     if (info) {
-      // Check for active tmux session
-      const hasActiveTmuxSession = await sessionExists(name);
+      // Check for active session
+      const hasActiveSession = await backend.sessionExists(name);
 
       candidates.push({
         name: info.name,
@@ -257,7 +259,7 @@ async function gatherWorkspaceCandidates(
         behind: info.behind,
         uncommittedChanges: info.uncommittedChanges,
         lastCommit: info.lastCommit,
-        hasActiveTmuxSession,
+        hasActiveSession,
       });
     }
   }
@@ -270,7 +272,7 @@ async function gatherWorkspaceCandidates(
  *
  * Additional ranking factors:
  * - Shorter workspace names get +5 bonus (easier to type)
- * - Active tmux sessions get +10 bonus (likely working on it)
+ * - Active sessions get +10 bonus (likely working on it)
  *
  * @param matches Fuzzy match results
  * @returns Ranked workspace results
@@ -286,8 +288,8 @@ function rankMatches(
       finalScore += 5;
     }
 
-    // Bonus for active tmux session (likely current work)
-    if (match.item.hasActiveTmuxSession) {
+    // Bonus for active session (likely current work)
+    if (match.item.hasActiveSession) {
       finalScore += 10;
     }
 
@@ -338,8 +340,8 @@ async function selectFromRanked(
 /**
  * Format a ranked workspace for display in selection list
  *
- * Format: "name    [branch +A -B] status (tmux)"
- * Example: "my-feature    [main +2 -0] clean (tmux)"
+ * Format: "name    [branch +A -B] status (active)"
+ * Example: "my-feature    [main +2 -0] clean (active)"
  *
  * @param ranked Ranked workspace
  * @returns Formatted string for display
@@ -365,9 +367,9 @@ function formatWorkspaceChoice(ranked: RankedWorkspace): string {
     parts.push('clean');
   }
 
-  // Active tmux indicator
-  if (ws.hasActiveTmuxSession) {
-    parts.push('(tmux)');
+  // Active session indicator
+  if (ws.hasActiveSession) {
+    parts.push('(active)');
   }
 
   return parts.join(' ');

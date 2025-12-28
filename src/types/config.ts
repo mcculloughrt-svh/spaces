@@ -2,6 +2,19 @@
  * Type definitions for Spaces CLI configuration
  */
 
+/** Available multiplexer backend IDs */
+export type MultiplexerId = 'tmux' | 'zellij' | 'shell' | null;
+
+/** Valid multiplexer IDs (excluding null/auto-detect) */
+const VALID_MULTIPLEXER_IDS = ['tmux', 'zellij', 'shell'] as const;
+
+/**
+ * Type guard to check if a value is a valid multiplexer ID
+ */
+export function isValidMultiplexerId(value: string): value is Exclude<MultiplexerId, null> {
+  return VALID_MULTIPLEXER_IDS.includes(value as any);
+}
+
 /**
  * Global configuration stored in ~/spaces/.config.json
  */
@@ -14,6 +27,8 @@ export interface GlobalConfig {
   defaultBaseBranch: string;
   /** Number of days before a workspace is considered stale (default: 30) */
   staleDays: number;
+  /** Preferred multiplexer backend (null = auto-detect) */
+  multiplexer: MultiplexerId;
 }
 
 /**
@@ -46,6 +61,7 @@ export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
   projectsDir: '', // Will be set to ~/spaces at runtime
   defaultBaseBranch: 'main',
   staleDays: 30,
+  multiplexer: null, // Auto-detect
 };
 
 /**

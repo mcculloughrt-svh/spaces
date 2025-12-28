@@ -21,7 +21,8 @@ import {
 	deleteLocalBranch,
 	getWorktreeInfo,
 } from '../core/git.js'
-import { killSession, sessionExists, getCurrentSessionName } from '../core/tmux.js'
+import { getBackend } from '../multiplexers/index.js'
+import { getMultiplexerPreference } from '../core/config.js'
 import { logger } from '../utils/logger.js'
 import { selectItem, promptConfirm, promptInput } from '../utils/prompts.js'
 import { SpacesError, NoProjectError } from '../types/errors.js'
@@ -118,21 +119,28 @@ export async function removeWorkspace(
 		}
 	}
 
-	// Kill tmux session if it exists
-	if (await sessionExists(workspaceName)) {
+	// Kill session if it exists
+	const multiplexerPreference = getMultiplexerPreference()
+	const backend = await getBackend(multiplexerPreference)
+
+	if (await backend.sessionExists(workspaceName)) {
 		// Check if we're currently in the session we're trying to kill
-		const currentSession = await getCurrentSessionName()
+		const currentSession = await backend.getCurrentSessionName()
 		if (currentSession === workspaceName) {
 			logger.error(
-				`Cannot remove workspace while inside its tmux session "${workspaceName}"`
+				`Cannot remove workspace while inside its ${backend.displayName} session "${workspaceName}"`
 			)
-			logger.info('Please detach from this tmux session and run the command again')
-			logger.info('  Detach: Press Ctrl+b, then d')
+			logger.info(`Please exit from this ${backend.displayName} session and run the command again`)
+			if (backend.id === 'tmux') {
+				logger.info('  Detach: Press Ctrl+b, then d')
+			} else if (backend.id === 'zellij') {
+				logger.info('  Detach: Press Ctrl+o, then d')
+			}
 			process.exit(1)
 		}
 
-		logger.info('Killing tmux session...')
-		await killSession(workspaceName)
+		logger.info(`Killing ${backend.displayName} session...`)
+		await backend.killSession(workspaceName)
 	}
 
 	// Run remove scripts (cleanup before deletion)
@@ -244,14 +252,16 @@ export async function removeProject(
 		}
 	}
 
-	// Kill all tmux sessions for workspaces
+	// Kill all sessions for workspaces
 	if (existsSync(workspacesDir)) {
 		const workspaces = readdirSync(workspacesDir)
+		const multiplexerPreference = getMultiplexerPreference()
+		const backend = await getBackend(multiplexerPreference)
 
 		for (const workspace of workspaces) {
-			if (await sessionExists(workspace)) {
-				logger.info(`Killing tmux session: ${workspace}`)
-				await killSession(workspace)
+			if (await backend.sessionExists(workspace)) {
+				logger.info(`Killing ${backend.displayName} session: ${workspace}`)
+				await backend.killSession(workspace)
 			}
 		}
 	}
