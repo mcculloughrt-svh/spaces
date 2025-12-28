@@ -242,6 +242,8 @@ program
 	.description('Remove stale workspaces based on age and PR status')
 	.option('--dry-run', 'Show what would be cleaned without removing')
 	.option('-f, --force', 'Remove all matching workspaces without interactive selection')
+	.option('--stale-days <days>', 'Days without commits to consider stale (default: 15)', parseInt)
+	.option('--merged-days <days>', 'Days after PR merge to consider cleanable (default: 5)', parseInt)
 	.action(async (options) => {
 		await checkFirstTimeSetup()
 		try {

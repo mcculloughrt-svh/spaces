@@ -19,9 +19,9 @@ import { selectMultiple, promptConfirm } from '../utils/prompts.js'
 import { NoProjectError } from '../types/errors.js'
 import type { WorktreeInfo } from '../types/workspace.js'
 
-// Staleness thresholds (in days)
-const STALE_DAYS_NO_CHANGES = 15
-const STALE_DAYS_MERGED_PR = 5
+// Default staleness thresholds (in days)
+const DEFAULT_STALE_DAYS_NO_CHANGES = 15
+const DEFAULT_STALE_DAYS_MERGED_PR = 5
 
 /**
  * Extended workspace info with PR state for clean command
@@ -60,12 +60,14 @@ function formatWorkspaceChoice(workspace: CleanableWorkspace): string {
  */
 async function analyzeWorkspace(
 	info: WorktreeInfo,
-	repository: string
+	repository: string,
+	staleDaysNoChanges: number,
+	staleDaysMergedPR: number
 ): Promise<CleanableWorkspace | null> {
 	const daysSinceCommit = daysSince(info.lastCommitDate)
 
-	// Check for merged PR (5+ days since commit AND PR merged)
-	if (daysSinceCommit >= STALE_DAYS_MERGED_PR) {
+	// Check for merged PR (N+ days since commit AND PR merged)
+	if (daysSinceCommit >= staleDaysMergedPR) {
 		const prState = await getPRStateForBranch(repository, info.branch)
 
 		if (prState === 'merged') {
@@ -78,8 +80,8 @@ async function analyzeWorkspace(
 		}
 	}
 
-	// Check for stale with no changes (15+ days AND no uncommitted changes)
-	if (daysSinceCommit >= STALE_DAYS_NO_CHANGES && info.uncommittedChanges === 0) {
+	// Check for stale with no changes (N+ days AND no uncommitted changes)
+	if (daysSinceCommit >= staleDaysNoChanges && info.uncommittedChanges === 0) {
 		// Still get PR state for informational purposes
 		const prState = await getPRStateForBranch(repository, info.branch)
 
@@ -101,12 +103,18 @@ export async function cleanWorkspaces(
 	options: {
 		dryRun?: boolean
 		force?: boolean
+		staleDays?: number
+		mergedDays?: number
 	} = {}
 ): Promise<void> {
 	const currentProject = getCurrentProject()
 	if (!currentProject) {
 		throw new NoProjectError()
 	}
+
+	// Use provided thresholds or defaults
+	const staleDaysNoChanges = options.staleDays ?? DEFAULT_STALE_DAYS_NO_CHANGES
+	const staleDaysMergedPR = options.mergedDays ?? DEFAULT_STALE_DAYS_MERGED_PR
 
 	const projectConfig = readProjectConfig(currentProject)
 	const workspacesDir = getProjectWorkspacesDir(currentProject)
@@ -126,25 +134,26 @@ export async function cleanWorkspaces(
 
 	logger.info('Analyzing workspaces...')
 
-	// Get workspace info for all workspaces
-	const workspaceInfos: WorktreeInfo[] = []
-	for (const name of workspaceNames) {
-		const workspacePath = join(workspacesDir, name)
-		const info = await getWorktreeInfo(workspacePath)
-		if (info) {
-			workspaceInfos.push(info)
-		}
-	}
+	// Get workspace info for all workspaces (in parallel)
+	const workspaceInfoResults = await Promise.all(
+		workspaceNames.map(async (name) => {
+			const workspacePath = join(workspacesDir, name)
+			return getWorktreeInfo(workspacePath)
+		})
+	)
+	const workspaceInfos = workspaceInfoResults.filter(
+		(info): info is WorktreeInfo => info !== null
+	)
 
-	// Analyze each workspace for staleness criteria
-	const cleanableWorkspaces: CleanableWorkspace[] = []
-
-	for (const info of workspaceInfos) {
-		const analysis = await analyzeWorkspace(info, projectConfig.repository)
-		if (analysis) {
-			cleanableWorkspaces.push(analysis)
-		}
-	}
+	// Analyze each workspace for staleness criteria (in parallel)
+	const analysisResults = await Promise.all(
+		workspaceInfos.map((info) =>
+			analyzeWorkspace(info, projectConfig.repository, staleDaysNoChanges, staleDaysMergedPR)
+		)
+	)
+	const cleanableWorkspaces = analysisResults.filter(
+		(result): result is CleanableWorkspace => result !== null
+	)
 
 	if (cleanableWorkspaces.length === 0) {
 		logger.success('No stale workspaces found')
