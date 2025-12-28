@@ -34,12 +34,6 @@ export const CORE_DEPS: Dependency[] = [
     checkArgs: ['--version'],
     installUrl: 'https://git-scm.com/',
   },
-  {
-    name: 'jq',
-    command: 'jq',
-    checkArgs: ['--version'],
-    installUrl: 'https://stedolan.github.io/jq/',
-  },
 ];
 
 /**

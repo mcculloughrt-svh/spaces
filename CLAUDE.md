@@ -193,7 +193,6 @@ Required system dependencies (checked at runtime):
 - GitHub CLI (`gh`) - with authentication
 - Git
 - tmux
-- jq
 - Node.js 18+
 
 **Note**: fzf is NOT required (we use @inquirer/prompts instead)
@@ -318,7 +317,6 @@ Error types:
 - `gh` - GitHub CLI (list repos, check auth)
 - `git` - Git operations (worktree, branch management)
 - `tmux` - Session management
-- `jq` - JSON processing (used by some git operations)
 
 ## Special Considerations
 
