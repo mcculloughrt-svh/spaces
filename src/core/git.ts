@@ -255,7 +255,7 @@ export async function getWorktreeInfo(workspacePath: string): Promise<WorktreeIn
       uncommittedChanges,
       lastCommit: lastCommitMsg,
       lastCommitDate: lastCommitDateStr ? new Date(lastCommitDateStr) : new Date(),
-      hasActiveTmuxSession: false, // Will be populated by tmux module
+      hasActiveSession: false, // Will be populated by multiplexer module
     };
   } catch (error) {
     logger.debug(`Failed to get worktree info for ${workspacePath}: ${error}`);

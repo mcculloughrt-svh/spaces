@@ -13,8 +13,10 @@ import { addProject, addWorkspace } from './commands/add.js'
 import { switchProject, switchWorkspace } from './commands/switch.js'
 import { listProjects, listWorkspaces } from './commands/list.js'
 import { removeWorkspace, removeProject } from './commands/remove.js'
+import { showConfig, setMultiplexer, listMultiplexers } from './commands/config.js'
 import { ensureDependencies } from './utils/deps.js'
 import { getProjectDirectory } from './commands/directory.js'
+import { runOnboarding } from './commands/onboarding.js'
 
 const program = new Command()
 
@@ -25,7 +27,7 @@ program
 	.version('1.0.0')
 
 // First-time setup check
-async function checkFirstTimeSetup(): Promise<void> {
+async function checkFirstTimeSetup(): Promise<{ projectAdded: boolean }> {
 	if (isFirstTimeSetup()) {
 		logger.bold('Welcome to Spaces CLI!\n')
 		logger.log('Initializing spaces directory...\n')
@@ -43,11 +45,12 @@ async function checkFirstTimeSetup(): Promise<void> {
 
 		// Initialize spaces
 		initializeSpaces()
+		logger.success('Spaces initialized!')
 
-		logger.success('Spaces initialized!\n')
-		logger.log('Get started by adding a project:')
-		logger.command('  spaces add project\n')
+		// Run interactive onboarding
+		return await runOnboarding()
 	}
+	return { projectAdded: false }
 }
 
 // ============================================================================
@@ -65,7 +68,11 @@ addCommand
 	.option('--org <org>', 'Filter repos to specific organization')
 	.option('--linear-key <key>', 'Provide Linear API key via flag')
 	.action(async (options) => {
-		await checkFirstTimeSetup()
+		const { projectAdded } = await checkFirstTimeSetup()
+		if (projectAdded) {
+			// Onboarding already added a project, skip
+			return
+		}
 		try {
 			await addProject(options)
 		} catch (error) {
@@ -220,6 +227,54 @@ removeCommand.action(async (options) => {
 	await checkFirstTimeSetup()
 	try {
 		await removeWorkspace(undefined, options)
+	} catch (error) {
+		handleError(error)
+	}
+})
+
+// ============================================================================
+// Config Commands
+// ============================================================================
+
+const configCommand = program
+	.command('config')
+	.description('Manage CLI configuration')
+
+configCommand
+	.command('multiplexer')
+	.alias('mux')
+	.description('Set or view multiplexer preference')
+	.argument('[multiplexer]', 'Multiplexer to use (tmux, zellij, shell, or auto)')
+	.action(async (multiplexer) => {
+		await checkFirstTimeSetup()
+		try {
+			if (multiplexer) {
+				await setMultiplexer(multiplexer)
+			} else {
+				await setMultiplexer()
+			}
+		} catch (error) {
+			handleError(error)
+		}
+	})
+
+configCommand
+	.command('list')
+	.description('List available multiplexers')
+	.action(async () => {
+		await checkFirstTimeSetup()
+		try {
+			await listMultiplexers()
+		} catch (error) {
+			handleError(error)
+		}
+	})
+
+// Default config command (show current config)
+configCommand.action(async () => {
+	await checkFirstTimeSetup()
+	try {
+		await showConfig()
 	} catch (error) {
 		handleError(error)
 	}

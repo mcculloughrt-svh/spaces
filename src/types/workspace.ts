@@ -22,8 +22,8 @@ export interface WorktreeInfo {
 	lastCommit: string
 	/** Last commit date */
 	lastCommitDate: Date
-	/** Whether a tmux session is active for this workspace */
-	hasActiveTmuxSession: boolean
+	/** Whether a multiplexer session is active for this workspace */
+	hasActiveSession: boolean
 }
 
 /**
