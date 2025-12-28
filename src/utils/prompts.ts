@@ -115,3 +115,35 @@ export async function promptPassword(
     return null;
   }
 }
+
+/**
+ * Multi-select items from a checkbox list
+ * @param items Array of items with name and value
+ * @param message Prompt message
+ * @returns Array of selected values or empty array if cancelled
+ */
+export async function selectMultiple<T>(
+  items: Array<{ name: string; value: T; checked?: boolean }>,
+  message: string
+): Promise<T[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  try {
+    const { checkbox } = await import('@inquirer/prompts');
+    const selected = await checkbox({
+      message,
+      choices: items.map((item) => ({
+        name: item.name,
+        value: item.value,
+        checked: item.checked ?? false,
+      })),
+    });
+
+    return selected;
+  } catch (error) {
+    // User cancelled (Ctrl+C)
+    return [];
+  }
+}

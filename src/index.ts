@@ -13,6 +13,7 @@ import { addProject, addWorkspace } from './commands/add.js'
 import { switchProject, switchWorkspace } from './commands/switch.js'
 import { listProjects, listWorkspaces } from './commands/list.js'
 import { removeWorkspace, removeProject } from './commands/remove.js'
+import { cleanWorkspaces } from './commands/clean.js'
 import { showConfig, setMultiplexer, listMultiplexers } from './commands/config.js'
 import { ensureDependencies } from './utils/deps.js'
 import { getProjectDirectory } from './commands/directory.js'
@@ -231,6 +232,26 @@ removeCommand.action(async (options) => {
 		handleError(error)
 	}
 })
+
+// ============================================================================
+// Clean Command
+// ============================================================================
+
+program
+	.command('clean')
+	.description('Remove stale workspaces based on age and PR status')
+	.option('--dry-run', 'Show what would be cleaned without removing')
+	.option('-f, --force', 'Remove all matching workspaces without interactive selection')
+	.option('--stale-days <days>', 'Days without commits to consider stale (default: 15)', parseInt)
+	.option('--merged-days <days>', 'Days after PR merge to consider cleanable (default: 5)', parseInt)
+	.action(async (options) => {
+		await checkFirstTimeSetup()
+		try {
+			await cleanWorkspaces(options)
+		} catch (error) {
+			handleError(error)
+		}
+	})
 
 // ============================================================================
 // Config Commands

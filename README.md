@@ -18,7 +18,6 @@ The following tools must be installed and available in your PATH:
 - [GitHub CLI (`gh`)](https://cli.github.com/) - for listing repositories
 - [Git](https://git-scm.com/) - for worktree management
 - [tmux](https://github.com/tmux/tmux/wiki) - for session management
-- [jq](https://stedolan.github.io/jq/) - for JSON processing
 - [Bun](https://bun.sh) - to run the CLI (or node.js... if you don't mind startup lag)
 
 **GitHub Authentication**: You must authenticate the GitHub CLI before using Spaces:
