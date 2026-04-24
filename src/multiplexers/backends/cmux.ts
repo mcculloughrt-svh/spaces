@@ -38,6 +38,7 @@ import {
 } from '../../core/cmux-rpc.js'
 import {
 	buildCmuxTemplateFileContent,
+	buildCmuxTitleHookScript,
 	buildSpacesRunnerCommand,
 } from '../../core/cmux-template.js'
 
@@ -259,9 +260,30 @@ export class CmuxBackend implements MultiplexerBackend {
 				// and suspenders on platforms where it isn't.
 			}
 
+			// Stage a title-locker script that, when sourced into the
+			// outer interactive shell, installs a precmd/PROMPT_COMMAND
+			// hook to keep the cmux sidebar label stuck to the spaces
+			// workspace name. We source it (not `bash <path>`) because
+			// the hook must live in the outer shell — the shell whose
+			// prompt cmux uses to decide the workspace title. After the
+			// source completes the hook is in memory, so we delete the
+			// file immediately.
+			const titleHookPath = join(
+				options.workingDirectory,
+				'.spaces-cmux-title.sh'
+			)
+			writeFileSync(
+				titleHookPath,
+				buildCmuxTitleHookScript(options.name),
+				{ mode: 0o600 }
+			)
+
 			// Small delay so the shell is reading stdin before we send.
 			await new Promise((r) => setTimeout(r, 250))
-			await surfaceSendText(primary.id, `bash ${runnerPath}`)
+			await surfaceSendText(
+				primary.id,
+				`source ${titleHookPath}; rm -f ${titleHookPath}; bash ${runnerPath}`
+			)
 			await surfaceSendKey(primary.id, 'enter')
 
 			return { success: true }

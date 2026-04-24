@@ -228,6 +228,43 @@ export function buildSpacesRunnerCommand(
 }
 
 /**
+ * Shell snippet that, when `source`-d into an interactive shell,
+ * installs a prompt hook that re-emits an OSC 0 title with the spaces
+ * workspace name on every prompt. cmux's sidebar label tracks the
+ * terminal's process title, so without this the label drifts to
+ * whatever the last foreground process (claude, vim, etc.) last set.
+ *
+ * Registers the hook idempotently for both zsh (precmd_functions /
+ * add-zsh-hook) and bash (PROMPT_COMMAND). Appended last so it wins
+ * over any existing user title-setting hooks. Fires once immediately
+ * so the label updates without waiting for the next prompt.
+ */
+export function buildCmuxTitleHookScript(workspaceName: string): string {
+	const quoted = escapeShellArg(workspaceName)
+	return `# spaces: keep cmux sidebar label stuck to the spaces workspace name
+_spaces_cmux_set_title() {
+  printf '\\033]0;%s\\007' ${quoted}
+}
+if [ -n "\${ZSH_VERSION:-}" ]; then
+  autoload -Uz add-zsh-hook 2>/dev/null
+  if typeset -f add-zsh-hook >/dev/null 2>&1; then
+    add-zsh-hook precmd _spaces_cmux_set_title
+  else
+    typeset -ga precmd_functions
+    precmd_functions+=(_spaces_cmux_set_title)
+  fi
+elif [ -n "\${BASH_VERSION:-}" ]; then
+  case "\${PROMPT_COMMAND:-}" in
+    *_spaces_cmux_set_title*) ;;
+    "") PROMPT_COMMAND="_spaces_cmux_set_title" ;;
+    *) PROMPT_COMMAND="\${PROMPT_COMMAND%;};_spaces_cmux_set_title" ;;
+  esac
+fi
+_spaces_cmux_set_title
+`
+}
+
+/**
  * Build the layout object passed as `layout` in the
  * `workspace.create` RPC. Matches the shape of
  * `commands[*].workspace.layout` documented in cmux's custom-commands
