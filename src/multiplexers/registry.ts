@@ -6,17 +6,21 @@ import type { MultiplexerBackend } from './interface.js'
 import { TmuxBackend } from './backends/tmux.js'
 import { ZellijBackend } from './backends/zellij.js'
 import { ShellBackend } from './backends/shell.js'
+import { CmuxBackend } from './backends/cmux.js'
 import { logger } from '../utils/logger.js'
 
 /** Available backend IDs */
-export type BackendId = 'tmux' | 'zellij' | 'shell'
+export type BackendId = 'tmux' | 'zellij' | 'shell' | 'cmux'
 
 /** Registry of all available backends */
 const backends = new Map<BackendId, () => MultiplexerBackend>([
 	['tmux', (): MultiplexerBackend => new TmuxBackend()],
 	['zellij', (): MultiplexerBackend => new ZellijBackend()],
 	['shell', (): MultiplexerBackend => new ShellBackend()],
+	['cmux', (): MultiplexerBackend => new CmuxBackend()],
 ])
+
+let fallbackWarned = false
 
 /** Cached backend instance */
 let currentBackend: MultiplexerBackend | null = null
@@ -43,9 +47,18 @@ export async function getBackend(
 			currentBackendId = preferredId
 			return backend
 		}
-		logger.warning(
-			`Preferred multiplexer "${preferredId}" not available, falling back...`
-		)
+		if (preferredId === 'cmux') {
+			if (!fallbackWarned) {
+				logger.warning(
+					'cmux backend unavailable (must be run from inside a cmux surface); falling back.'
+				)
+				fallbackWarned = true
+			}
+		} else {
+			logger.warning(
+				`Preferred multiplexer "${preferredId}" not available, falling back...`
+			)
+		}
 	}
 
 	// Auto-detect available backend
@@ -58,9 +71,14 @@ export async function getBackend(
 /**
  * Detect the best available backend
  * Priority: tmux > zellij > shell
+ * If invoked from inside a cmux surface (CMUX_WORKSPACE_ID set),
+ * cmux is preferred over the others so spaces-driven workspaces
+ * show up in the active cmux window.
  */
 export async function detectBestBackend(): Promise<MultiplexerBackend> {
-	const priority: BackendId[] = ['tmux', 'zellij', 'shell']
+	const priority: BackendId[] = process.env.CMUX_WORKSPACE_ID
+		? ['cmux', 'tmux', 'zellij', 'shell']
+		: ['tmux', 'zellij', 'shell']
 
 	for (const id of priority) {
 		const factory = backends.get(id)

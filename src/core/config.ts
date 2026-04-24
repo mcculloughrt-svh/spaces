@@ -13,12 +13,19 @@ import {
 } from 'fs'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
-import type { GlobalConfig, ProjectConfig, MultiplexerId } from '../types/config.js'
+import type {
+	GlobalConfig,
+	ProjectConfig,
+	MultiplexerId,
+	TerminalContext,
+	TerminalMultiplexerMap,
+} from '../types/config.js'
 import {
 	DEFAULT_GLOBAL_CONFIG,
 	createDefaultProjectConfig,
 } from '../types/config.js'
 import { SpacesError } from '../types/errors.js'
+import { buildCmuxTemplateFileContent } from './cmux-template.js'
 
 /**
  * Get the global spaces directory path
@@ -344,59 +351,17 @@ export function createProject(
 	mkdirSync(workspacesDir, { recursive: true })
 
 	// Create tmux template file
-	let tmuxTemplate = `# Tmux Configuration Template
-#
-# This file is automatically copied to .tmux.conf in each new workspace.
-# Customize this template to set up your preferred tmux layout for all workspaces.
-#
-# Common uses:
-#   - Split windows into panes
-#   - Create multiple windows
-#   - Set default layouts
-#   - Configure key bindings (workspace-specific)
-#
-# Note: This gets sourced AFTER your global ~/.tmux.conf (if you have one),
-# so you can override global settings here or add workspace-specific layouts.
-`
-
-	// Add LLM assistant split pane configuration if enabled
-	if (llmAssistant) {
-		tmuxTemplate += `
-# LLM Assistant Split Pane
-# Split window vertically (50/50)
-split-window -h -c "#{pane_current_path}"
-
-# Select left pane and run LLM assistant
-select-pane -t 0
-send-keys '${llmAssistant}' C-m
-
-# Select right pane as default (where user starts)
-select-pane -t 1
-`
-	} else {
-		tmuxTemplate += `
-# Example: Split window horizontally (create right pane at 30% width)
-# split-window -h -p 30 -c "#{pane_current_path}"
-
-# Example: Split the left pane vertically
-# select-pane -t 0
-# split-window -v -p 50 -c "#{pane_current_path}"
-
-# Example: Create multiple windows
-# new-window -n "tests"
-# new-window -n "logs"
-# select-window -t 0
-
-# Example: Set a tiled layout
-# select-layout tiled
-
-# Example: Select a specific pane to start in
-# select-pane -t 0
-`
-	}
-
 	const tmuxTemplatePath = join(projectDir, 'tmux.template.conf')
-	writeFileSync(tmuxTemplatePath, tmuxTemplate, 'utf-8')
+	writeFileSync(tmuxTemplatePath, buildTmuxTemplateFileContent(llmAssistant), 'utf-8')
+
+	// Always write cmux template alongside the tmux template so users can
+	// switch backends later without re-initializing the project.
+	const cmuxTemplatePath = join(projectDir, 'cmux.template.json')
+	writeFileSync(
+		cmuxTemplatePath,
+		buildCmuxTemplateFileContent(llmAssistant),
+		'utf-8'
+	)
 
 	// Create scripts directories
 	mkdirSync(getScriptsPhaseDir(projectName, 'pre'), { recursive: true })
@@ -558,17 +523,137 @@ echo "Running Spaces cleanup on: $WORKSPACE_NAME from $REPOSITORY"
 }
 
 /**
- * Get the configured multiplexer preference
- * Returns null for auto-detection
+ * Build the body of tmux.template.conf. Extracted from createProject()
+ * so retrofit flows (`spaces config init tmux`) can reuse it.
+ */
+export function buildTmuxTemplateFileContent(llmAssistant?: string): string {
+	const header = `# Tmux Configuration Template
+#
+# This file is automatically copied to .tmux.conf in each new workspace.
+# Customize this template to set up your preferred tmux layout for all workspaces.
+#
+# Common uses:
+#   - Split windows into panes
+#   - Create multiple windows
+#   - Set default layouts
+#   - Configure key bindings (workspace-specific)
+#
+# Note: This gets sourced AFTER your global ~/.tmux.conf (if you have one),
+# so you can override global settings here or add workspace-specific layouts.
+`
+
+	if (llmAssistant) {
+		return (
+			header +
+			`
+# LLM Assistant Split Pane
+# Split window vertically (50/50)
+split-window -h -c "#{pane_current_path}"
+
+# Select left pane and run LLM assistant
+select-pane -t 0
+send-keys '${llmAssistant}' C-m
+
+# Select right pane as default (where user starts)
+select-pane -t 1
+`
+		)
+	}
+
+	return (
+		header +
+		`
+# Example: Split window horizontally (create right pane at 30% width)
+# split-window -h -p 30 -c "#{pane_current_path}"
+
+# Example: Split the left pane vertically
+# select-pane -t 0
+# split-window -v -p 50 -c "#{pane_current_path}"
+
+# Example: Create multiple windows
+# new-window -n "tests"
+# new-window -n "logs"
+# select-window -t 0
+
+# Example: Set a tiled layout
+# select-layout tiled
+
+# Example: Select a specific pane to start in
+# select-pane -t 0
+`
+	)
+}
+
+/**
+ * Detect the terminal we're running inside of.
+ *
+ * cmux uses libghostty, so values like `GHOSTTY_RESOURCES_DIR` or even
+ * `TERM_PROGRAM=ghostty` may be set inside a cmux surface. The cmux
+ * check runs first via CMUX_WORKSPACE_ID (which cmux sets and Ghostty
+ * does not) so the ambiguity never reaches the Ghostty check.
+ */
+export function detectTerminalContext(): TerminalContext {
+	if (process.env.CMUX_WORKSPACE_ID) return 'cmux'
+	if (process.env.TERM_PROGRAM === 'ghostty') return 'ghostty'
+	return 'default'
+}
+
+/**
+ * Resolve the multiplexer preference for the current terminal.
+ *
+ * Order:
+ *   1. multiplexerByTerminal[<current context>]
+ *   2. multiplexerByTerminal.default
+ *   3. legacy `multiplexer` field
+ *   4. null (auto-detect)
+ *
+ * `undefined` is treated as "not set — fall through"; `null` is treated
+ * as "explicitly auto-detect — stop here".
  */
 export function getMultiplexerPreference(): MultiplexerId {
 	const globalConfig = readGlobalConfig()
+	const ctx = detectTerminalContext()
+	const byTerm = globalConfig.multiplexerByTerminal
+	if (byTerm) {
+		if (ctx in byTerm && byTerm[ctx] !== undefined) {
+			return byTerm[ctx] ?? null
+		}
+		if ('default' in byTerm && byTerm.default !== undefined) {
+			return byTerm.default ?? null
+		}
+	}
 	return globalConfig.multiplexer
 }
 
 /**
- * Set the multiplexer preference
+ * Return the full per-terminal map (empty object if unset).
+ */
+export function getMultiplexerPreferenceMap(): TerminalMultiplexerMap {
+	const globalConfig = readGlobalConfig()
+	return globalConfig.multiplexerByTerminal ?? {}
+}
+
+/**
+ * Set the legacy single-field multiplexer preference. Retained for
+ * scripts and internals that want a global default. Prefer
+ * `setMultiplexerPreferenceForTerminal` for interactive usage.
  */
 export function setMultiplexerPreference(multiplexer: MultiplexerId): void {
 	updateGlobalConfig({ multiplexer })
+}
+
+/**
+ * Set the multiplexer preference for a specific terminal context,
+ * merging into any existing map entries.
+ */
+export function setMultiplexerPreferenceForTerminal(
+	context: TerminalContext,
+	multiplexer: MultiplexerId
+): void {
+	const globalConfig = readGlobalConfig()
+	const next: TerminalMultiplexerMap = {
+		...(globalConfig.multiplexerByTerminal ?? {}),
+		[context]: multiplexer,
+	}
+	updateGlobalConfig({ multiplexerByTerminal: next })
 }

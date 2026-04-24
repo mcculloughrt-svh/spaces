@@ -135,6 +135,8 @@ export async function removeWorkspace(
 				logger.info('  Detach: Press Ctrl+b, then d')
 			} else if (backend.id === 'zellij') {
 				logger.info('  Detach: Press Ctrl+o, then d')
+			} else if (backend.id === 'cmux') {
+				logger.info('  Switch to another cmux workspace (⌘1–⌘9 or the sidebar) and try again.')
 			}
 			process.exit(1)
 		}
