@@ -10,10 +10,11 @@ import {
 	readProjectConfig,
 	getProjectWorkspacesDir,
 	getProjectBaseDir,
+	getMultiplexerPreference,
 } from '../core/config.js'
 import { removeWorktree, deleteLocalBranch, getWorktreeInfo } from '../core/git.js'
 import { getPRStateForBranch, type PRState } from '../core/github.js'
-import { killSession, sessionExists, getCurrentSessionName } from '../core/tmux.js'
+import { getBackend } from '../multiplexers/index.js'
 import { logger } from '../utils/logger.js'
 import { selectMultiple, promptConfirm } from '../utils/prompts.js'
 import { NoProjectError } from '../types/errors.js'
@@ -215,8 +216,12 @@ export async function cleanWorkspaces(
 		workspacesToRemove = selected
 	}
 
-	// Get current tmux session to check if we're in one of the workspaces
-	const currentSession = await getCurrentSessionName()
+	// Resolve the active multiplexer backend and check if we're in one of
+	// the workspaces. Routing through the backend abstraction ensures
+	// cmux workspaces get closed via workspace.close instead of being
+	// left as zombie sidebar entries.
+	const backend = await getBackend(getMultiplexerPreference())
+	const currentSession = await backend.getCurrentSessionName()
 
 	// Remove selected workspaces
 	let removedCount = 0
@@ -227,18 +232,28 @@ export async function cleanWorkspaces(
 		const workspacePath = info.path
 
 		try {
-			// Check if we're currently in this workspace's tmux session
+			// Check if we're currently in this workspace's session
 			if (currentSession === info.name) {
-				logger.warning(`Skipping "${info.name}" - currently in its tmux session`)
-				logger.info('  Detach from session (Ctrl+b, d) and run again')
+				logger.warning(
+					`Skipping "${info.name}" - currently in its ${backend.displayName} session`
+				)
+				if (backend.id === 'tmux') {
+					logger.info('  Detach from session (Ctrl+b, d) and run again')
+				} else if (backend.id === 'zellij') {
+					logger.info('  Detach from session (Ctrl+o, d) and run again')
+				} else if (backend.id === 'cmux') {
+					logger.info(
+						'  Switch to another cmux workspace (⌘1–⌘9 or the sidebar) and run again'
+					)
+				}
 				skippedCount++
 				continue
 			}
 
-			// Kill tmux session if it exists
-			if (await sessionExists(info.name)) {
-				logger.info(`Killing tmux session: ${info.name}`)
-				await killSession(info.name)
+			// Kill session if it exists
+			if (await backend.sessionExists(info.name)) {
+				logger.info(`Killing ${backend.displayName} session: ${info.name}`)
+				await backend.killSession(info.name)
 			}
 
 			// Remove worktree

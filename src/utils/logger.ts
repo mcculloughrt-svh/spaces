@@ -13,7 +13,11 @@ export type LogLevel = 'info' | 'success' | 'warning' | 'error' | 'debug';
  * Logger instance
  */
 class Logger {
-  private debugMode: boolean = false;
+  // Turn debug output on via `SPACES_DEBUG=1` (or the generic `DEBUG`
+  // env var). Useful for diagnosing multiplexer integration issues
+  // without adding a dedicated CLI flag.
+  private debugMode: boolean =
+    !!process.env.SPACES_DEBUG || !!process.env.DEBUG;
 
   /**
    * Enable or disable debug mode

@@ -13,6 +13,26 @@ This document provides comprehensive information for AI assistants working on th
 - Convention-based custom scripts (pre, setup, select phases)
 - Project and workspace lifecycle management
 
+## In-Progress Work: cmux Backend Support
+
+Branch `support-cmux` is adding [cmux](https://cmux.com/docs) as an alternative to tmux.
+cmux is a native macOS terminal with a Unix-socket RPC API, vertical workspace tabs,
+split panes, embedded browser panes, and first-class notifications.
+
+**Before touching cmux integration code, consult the research index:**
+
+- **Start here:** `docs/cmux/INDEX.md` — master index with task → file cross-reference
+- Per-topic files in `docs/cmux/`:
+  - `api.md` — socket RPC protocol, all methods, CLI flags, env vars, tmux→cmux mapping
+  - `custom-commands.md` — `cmux.json` schema for declarative workspace layouts
+  - `configuration.md` — `settings.json` full schema, `automation.socketControlMode`
+  - `concepts.md` — Window/Workspace/Pane/Surface/Panel hierarchy and how it maps to spaces' concepts
+  - `agent-integrations.md` — documents the tmux-compat shim pattern (directly relevant — one candidate integration strategy for spaces)
+  - `notifications.md`, `browser-automation.md`, `ssh.md`, `keyboard-shortcuts.md`, `getting-started.md`, `changelog.md`
+
+The index files contain excerpts from the cmux docs as of 2026-04-22. For anything the
+index does not answer, fetch from https://cmux.com/docs/<page> and update the index.
+
 ## Architecture
 
 ### Core Concepts

@@ -211,54 +211,63 @@ export async function createOrAttachSession(
 		)
 	}
 
-	// Determine which scripts to run based on setup status
-	const setupAlreadyRun = hasSetupBeenRun(options.workspacePath)
-	const workspaceName =
-		options.workspacePath.split('/').pop() || options.sessionName
+	// cmux bakes the scripts (and the .spaces-setup marker) into the
+	// surface's command via <SPACES_RUNNER>, so spaces must not also
+	// send them post-hoc or set the marker from the CLI — doing either
+	// would double-run scripts or mark setup complete before it
+	// actually finishes inside the surface.
+	const backendOwnsScripts = backend.id === 'cmux'
 
-	// Determine scripts directory
-	const scriptsDir = setupAlreadyRun
-		? getScriptsPhaseDir(options.projectName, 'select')
-		: options.noSetup
-			? null
-			: getScriptsPhaseDir(options.projectName, 'setup')
+	if (!backendOwnsScripts) {
+		// Determine which scripts to run based on setup status
+		const setupAlreadyRun = hasSetupBeenRun(options.workspacePath)
+		const workspaceName =
+			options.workspacePath.split('/').pop() || options.sessionName
 
-	if (scriptsDir) {
-		const scripts = discoverScripts(scriptsDir)
+		// Determine scripts directory
+		const scriptsDir = setupAlreadyRun
+			? getScriptsPhaseDir(options.projectName, 'select')
+			: options.noSetup
+				? null
+				: getScriptsPhaseDir(options.projectName, 'setup')
 
-		if (scripts.length > 0) {
-			if (backend.capabilities.sendCommands) {
-				// Backend supports sending commands to session
-				const phaseName = setupAlreadyRun ? 'select' : 'setup'
-				logger.debug(`Running ${phaseName} scripts in session...`)
+		if (scriptsDir) {
+			const scripts = discoverScripts(scriptsDir)
 
-				await runScriptsInSession(
-					backend,
-					options.sessionName,
-					scriptsDir,
-					workspaceName,
-					options.repository
-				)
-			} else {
-				// Backend doesn't support sending commands - need fallback
-				const mode =
-					options.scriptFallbackMode || (await promptScriptFallback())
+			if (scripts.length > 0) {
+				if (backend.capabilities.sendCommands) {
+					// Backend supports sending commands to session
+					const phaseName = setupAlreadyRun ? 'select' : 'setup'
+					logger.debug(`Running ${phaseName} scripts in session...`)
 
-				await handleScriptsFallback(
-					mode,
-					scriptsDir,
-					options.workspacePath,
-					workspaceName,
-					options.repository
-				)
+					await runScriptsInSession(
+						backend,
+						options.sessionName,
+						scriptsDir,
+						workspaceName,
+						options.repository
+					)
+				} else {
+					// Backend doesn't support sending commands - need fallback
+					const mode =
+						options.scriptFallbackMode || (await promptScriptFallback())
+
+					await handleScriptsFallback(
+						mode,
+						scriptsDir,
+						options.workspacePath,
+						workspaceName,
+						options.repository
+					)
+				}
 			}
 		}
-	}
 
-	// Mark setup as complete if we ran setup scripts
-	if (!setupAlreadyRun && !options.noSetup) {
-		markSetupComplete(options.workspacePath)
-		logger.debug('Setup marked as complete')
+		// Mark setup as complete if we ran setup scripts
+		if (!setupAlreadyRun && !options.noSetup) {
+			markSetupComplete(options.workspacePath)
+			logger.debug('Setup marked as complete')
+		}
 	}
 
 	// For shell backend, use workspace path as session name since it doesn't have real sessions

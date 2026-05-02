@@ -3,7 +3,7 @@
  * Handles both 'spaces add project' and 'spaces add [workspace-name]'
  */
 
-import { existsSync, copyFileSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, copyFileSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import {
   readGlobalConfig,
@@ -44,9 +44,11 @@ import {
   WorkspaceExistsError,
 } from '../types/errors.js';
 import type { CreateWorkspaceOptions } from '../types/workspace.js';
-import { runScriptsInTerminal } from '../utils/run-scripts.js';
+import { runScriptsInTerminal, discoverScripts } from '../utils/run-scripts.js';
 import { hasSetupBeenRun } from '../utils/workspace-state.js';
 import { generateMarkdown } from '../utils/markdown.js';
+import { renderCmuxTemplate } from '../core/cmux-template.js';
+import { ensureCmuxTrust } from '../core/cmux-trust.js';
 
 /**
  * Add a new project
@@ -135,8 +137,9 @@ export async function addProject(options: {
     linearTeamKey = await promptInput('Enter Linear team key (optional, e.g., ENG):') || undefined;
   }
 
-  // Ask about LLM assistant in tmux
-  const useLlmAssistant = await promptConfirm('Do you want an LLM assistant in tmux?', false);
+  // Ask about LLM assistant in the workspace (backend-agnostic wording —
+  // applies to both tmux's split-pane helper and cmux's layout).
+  const useLlmAssistant = await promptConfirm('Do you want an LLM assistant in your workspace?', false);
 
   let llmAssistant: string | undefined;
 
@@ -343,7 +346,7 @@ export async function addWorkspace(
 
   logger.success(`Created worktree from ${baseBranch}`);
 
-  // Copy multiplexer config template if it exists
+  // Copy (or render) multiplexer config template if it exists
   const projectDir = getProjectDir(currentProject);
   const multiplexerPreference = getMultiplexerPreference();
   const backend = await getBackend(multiplexerPreference);
@@ -356,9 +359,46 @@ export async function addWorkspace(
     const configPath = join(workspacePath, configFileName);
 
     if (existsSync(templatePath)) {
-      copyFileSync(templatePath, configPath);
-      logger.debug(`Copied ${templateFileName} to workspace ${configFileName}`);
+      if (backend.id === 'cmux') {
+        // cmux template has {{}} tokens and a <SPACES_RUNNER> placeholder
+        // that need to be expanded per-workspace. Do not overwrite a
+        // repo-shipped cmux.json (§4.6) — spaces still drives the RPC with
+        // its own rendered layout at createSession time.
+        if (existsSync(configPath)) {
+          logger.info(
+            'repo ships cmux.json at worktree root; using as-is (skipping spaces-generated file)'
+          );
+        } else {
+          const setupScripts = discoverScripts(
+            getScriptsPhaseDir(currentProject, 'setup')
+          );
+          const selectScripts = discoverScripts(
+            getScriptsPhaseDir(currentProject, 'select')
+          );
+          const rendered = renderCmuxTemplate(readFileSync(templatePath, 'utf-8'), {
+            workspace: workspaceName,
+            cwd: workspacePath,
+            repository: projectConfig.repository,
+            llmAssistant: projectConfig.llmAssistant,
+            setupScripts,
+            selectScripts,
+          });
+          writeFileSync(configPath, rendered, 'utf-8');
+          logger.debug(`Rendered ${templateFileName} to workspace ${configFileName}`);
+        }
+      } else {
+        copyFileSync(templatePath, configPath);
+        logger.debug(`Copied ${templateFileName} to workspace ${configFileName}`);
+      }
     }
+  }
+
+  // cmux trust-directory check runs once per project. Do it after the
+  // worktree+config are in place but before we hand off to
+  // createOrAttachSession so the RPC workspace.create isn't blocked by
+  // an "untrusted directory" prompt inside cmux.
+  if (backend.id === 'cmux') {
+    await ensureCmuxTrust(currentProject);
   }
 
   // If workspace was created from a Linear issue, save issue details as markdown

@@ -14,7 +14,13 @@ import { switchProject, switchWorkspace } from './commands/switch.js'
 import { listProjects, listWorkspaces } from './commands/list.js'
 import { removeWorkspace, removeProject } from './commands/remove.js'
 import { cleanWorkspaces } from './commands/clean.js'
-import { showConfig, setMultiplexer, listMultiplexers } from './commands/config.js'
+import {
+	showConfig,
+	setMultiplexer,
+	listMultiplexers,
+	initBackend,
+	parseTerminalOption,
+} from './commands/config.js'
 import { ensureDependencies } from './utils/deps.js'
 import { getProjectDirectory } from './commands/directory.js'
 import { runOnboarding } from './commands/onboarding.js'
@@ -264,16 +270,32 @@ const configCommand = program
 configCommand
 	.command('multiplexer')
 	.alias('mux')
-	.description('Set or view multiplexer preference')
-	.argument('[multiplexer]', 'Multiplexer to use (tmux, zellij, shell, or auto)')
-	.action(async (multiplexer) => {
+	.description('Set or view multiplexer preference (per terminal context)')
+	.argument('[multiplexer]', 'Multiplexer to use (tmux, zellij, shell, cmux, or auto)')
+	.option(
+		'--terminal <context>',
+		'Target a specific terminal slot: cmux, ghostty, or default (default: current detected context)'
+	)
+	.option(
+		'--list',
+		'Print the full per-terminal preference map and exit'
+	)
+	.option(
+		'--legacy',
+		'Write the legacy single-preference field instead of a terminal slot'
+	)
+	.action(async (multiplexer, options) => {
 		await checkFirstTimeSetup()
 		try {
-			if (multiplexer) {
-				await setMultiplexer(multiplexer)
-			} else {
-				await setMultiplexer()
+			const terminal = parseTerminalOption(options.terminal)
+			if (options.list) {
+				await setMultiplexer(undefined, { list: true })
+				return
 			}
+			await setMultiplexer(multiplexer, {
+				terminal,
+				legacy: Boolean(options.legacy),
+			})
 		} catch (error) {
 			handleError(error)
 		}
@@ -286,6 +308,29 @@ configCommand
 		await checkFirstTimeSetup()
 		try {
 			await listMultiplexers()
+		} catch (error) {
+			handleError(error)
+		}
+	})
+
+configCommand
+	.command('init')
+	.description(
+		'Retrofit a backend template (cmux or tmux) onto an existing project'
+	)
+	.argument('<backend>', 'Backend to initialize: cmux or tmux')
+	.option('--project <name>', 'Target project (default: current project)')
+	.option(
+		'--render-existing',
+		'Also render per-worktree config files for every existing workspace'
+	)
+	.action(async (backend, options) => {
+		await checkFirstTimeSetup()
+		try {
+			await initBackend(backend, {
+				project: options.project,
+				renderExisting: Boolean(options.renderExisting),
+			})
 		} catch (error) {
 			handleError(error)
 		}
